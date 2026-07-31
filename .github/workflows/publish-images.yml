@@ -1,0 +1,153 @@
+# FORK ONLY — do not upstream.
+# Publishes komodo-core + komodo-periphery to ghcr.io/modrink.
+# Patterns borrowed from tutotoons/web_new build.yml and modrink/mira release.yml.
+
+name: Publish images (fork)
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "v*.*.*-*"
+  pull_request:
+    paths:
+      - "bin/core/aio.Dockerfile"
+      - "bin/periphery/aio.Dockerfile"
+      - "bin/entrypoint.sh"
+      - ".dockerignore"
+      - ".github/workflows/publish-images.yml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "ui/**"
+      - "client/**"
+      - "lib/**"
+      - "bin/core/**"
+      - "bin/periphery/**"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or tag to build
+        required: true
+        default: main
+
+# Default-deny; jobs widen as needed (mira).
+permissions:
+  contents: read
+
+env:
+  CACHE_IMAGE: ghcr.io/${{ github.repository }}/buildcache
+  PUSH_IMAGE: ${{ github.event_name != 'pull_request' }}
+  CHECKOUT_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+  SEMVER_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref_name }}
+
+jobs:
+  ci-gate:
+    name: Cargo gate
+    if: github.repository == 'modrink/komodo'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ env.CHECKOUT_REF }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Build
+        run: cargo build --verbose
+
+      - name: Test
+        run: cargo test --verbose
+
+  build-and-push:
+    name: build (${{ matrix.component }})
+    if: github.repository == 'modrink/komodo'
+    needs: ci-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    concurrency:
+      group: build-ghcr-${{ github.ref }}-${{ matrix.component }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: core
+            dockerfile: bin/core/aio.Dockerfile
+            image: ghcr.io/modrink/komodo-core
+          - component: periphery
+            dockerfile: bin/periphery/aio.Dockerfile
+            image: ghcr.io/modrink/komodo-periphery
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ env.CHECKOUT_REF }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sanitize ref slug for Docker tags
+        run: |
+          slug="${SEMVER_SOURCE#refs/heads/}"
+          slug="${slug#refs/tags/}"
+          slug="$(echo "$slug" | tr '/_' '-' | tr -cd '[:alnum:].-' | cut -c1-128)"
+          echo "REF_SLUG=$slug" >> "$GITHUB_ENV"
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          context: git
+          images: ${{ matrix.image }}
+          # Stable tag → version / major.minor / major + latest.
+          # Prerelease (contains '-') → full version only, no latest.
+          # Non-semver dispatch ref → sha + sanitized ref slug.
+          tags: |
+            type=semver,pattern={{version}},value=${{ env.SEMVER_SOURCE }},enable=${{ startsWith(env.SEMVER_SOURCE, 'v') }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.SEMVER_SOURCE }},enable=${{ startsWith(env.SEMVER_SOURCE, 'v') && !contains(env.SEMVER_SOURCE, '-') }}
+            type=semver,pattern={{major}},value=${{ env.SEMVER_SOURCE }},enable=${{ startsWith(env.SEMVER_SOURCE, 'v') && !contains(env.SEMVER_SOURCE, '-') }}
+            type=sha,prefix=sha-
+            type=raw,value=${{ env.REF_SLUG }},enable=${{ !startsWith(env.SEMVER_SOURCE, 'v') && env.REF_SLUG != '' }}
+          flavor: |
+            latest=${{ startsWith(env.SEMVER_SOURCE, 'v') && !contains(env.SEMVER_SOURCE, '-') && github.event_name != 'pull_request' }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/modrink/komodo
+            org.opencontainers.image.version=${{ env.SEMVER_SOURCE }}
+            org.opencontainers.image.title=komodo-${{ matrix.component }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: ${{ env.PUSH_IMAGE }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: |
+            type=gha,scope=komodo-${{ matrix.component }}
+            type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.component }}
+          cache-to: |
+            type=gha,mode=max,scope=komodo-${{ matrix.component }}
+            type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.component }},mode=max,ignore-error=true
