@@ -93,7 +93,14 @@ export default function SwarmTask() {
           </>
         }
       >
-        {swarm && <SwarmTaskTabs swarm={swarm} task={_task} intent={intent} />}
+        {swarm && (
+          <SwarmTaskTabs
+            swarm={swarm}
+            task={_task}
+            taskItem={task}
+            intent={intent}
+          />
+        )}
       </ResourceSubPage>
     </PageGuard>
   );

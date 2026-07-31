@@ -275,6 +275,32 @@ export const terminal_methods = (url: string, state: ClientState) => {
       callbacks,
     );
 
+  const execute_swarm_task_terminal = async (
+    {
+      swarm,
+      task,
+      terminal,
+      command,
+      init,
+    }: {
+      swarm: string;
+      task: string;
+      terminal?: string;
+      command: string;
+      init?: InitTerminal;
+    },
+    callbacks?: ExecuteCallbacks,
+  ) =>
+    execute_terminal(
+      {
+        target: { type: "SwarmTask", params: { swarm, task } },
+        terminal,
+        command,
+        init,
+      },
+      callbacks,
+    );
+
   // LEGACY METHODS
   const execute_container_exec = (
     {
@@ -395,6 +421,7 @@ export const terminal_methods = (url: string, state: ClientState) => {
     execute_container_terminal,
     execute_deployment_terminal,
     execute_stack_service_terminal,
+    execute_swarm_task_terminal,
     // Legacy convenience methods
     execute_container_exec,
     execute_deployment_exec,
@@ -419,5 +446,10 @@ const connect_terminal_target_query = (target: TerminalTarget) => {
       );
     case "Deployment":
       return base + `target[params][deployment]=${target.params.deployment}`;
+    case "SwarmTask":
+      return (
+        base +
+        `target[params][swarm]=${target.params.swarm}&target[params][task]=${target.params.task}`
+      );
   }
 };

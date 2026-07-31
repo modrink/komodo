@@ -179,6 +179,13 @@ pub async fn list_terminals(
           },
           TerminalTarget::Deployment { deployment },
         ) => target_deployment == deployment,
+        (
+          TerminalTarget::SwarmTask {
+            swarm: target_swarm,
+            task: target_task,
+          },
+          TerminalTarget::SwarmTask { swarm, task },
+        ) => target_swarm == swarm && target_task == task,
         _ => false,
       }
     })

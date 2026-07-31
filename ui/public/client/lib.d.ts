@@ -341,6 +341,17 @@ export declare function KomodoClient(url: string, options: InitOptions): {
         init?: import("./types.js").InitTerminal;
     }, callbacks?: import("./terminal.js").ExecuteCallbacks) => Promise<void>;
     /**
+     * Executes a command on a given Swarm task / terminal,
+     * and gives callbacks to handle the output as it comes in.
+     */
+    execute_swarm_task_terminal: ({ swarm, task, terminal, command, init, }: {
+        swarm: string;
+        task: string;
+        terminal?: string;
+        command: string;
+        init?: import("./types.js").InitTerminal;
+    }, callbacks?: import("./terminal.js").ExecuteCallbacks) => Promise<void>;
+    /**
      * Executes a command on a given Server / Container / terminal,
      * and gives callbacks to handle the output as it comes in.
      *

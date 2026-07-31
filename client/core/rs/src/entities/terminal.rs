@@ -16,7 +16,7 @@ pub struct Terminal {
   pub name: String,
   /// The target resource of the Terminal.
   pub target: TerminalTarget,
-  /// The name of the target resource (Server / Stack / Deployment).
+  /// The name of the target resource (Server / Stack / Deployment / Swarm).
   /// Resolved by Core when listing all terminals for a user.
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub target_name: Option<String>,
@@ -69,6 +69,10 @@ pub enum TerminalTarget {
   Deployment {
     deployment: String,
   },
+  SwarmTask {
+    swarm: String,
+    task: String,
+  },
 }
 
 impl TerminalTarget {
@@ -93,6 +97,13 @@ impl TerminalTarget {
         TerminalTarget::Deployment { deployment: target },
         TerminalTarget::Deployment { deployment },
       ) => target == deployment,
+      (
+        TerminalTarget::SwarmTask {
+          swarm: target_swarm,
+          task: target_task,
+        },
+        TerminalTarget::SwarmTask { swarm, task },
+      ) => target_swarm == swarm && target_task == task,
       _ => false,
     }
   }

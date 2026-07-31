@@ -2992,10 +2992,7 @@ export interface SystemInformation {
     kernel?: string;
     /** Physical core count */
     core_count?: number;
-    /**
-     * Logical core count. If available,
-     * used to interpret system load accurately.
-     */
+    /** Logical core count. */
     logical_core_count?: number;
     /** System hostname based off DNS */
     host_name?: string;
@@ -5696,6 +5693,12 @@ export type TerminalTarget = {
     params: {
         deployment: string;
     };
+} | {
+    type: "SwarmTask";
+    params: {
+        swarm: string;
+        task: string;
+    };
 };
 /**
  * Represents an active terminal on a server.
@@ -5707,7 +5710,7 @@ export interface Terminal {
     /** The target resource of the Terminal. */
     target: TerminalTarget;
     /**
-     * The name of the target resource (Server / Stack / Deployment).
+     * The name of the target resource (Server / Stack / Deployment / Swarm).
      * Resolved by Core when listing all terminals for a user.
      */
     target_name?: string;
@@ -11938,6 +11941,8 @@ export declare enum SpecificPermission {
      * - Access the terminal apis
      * On **Stack / Deployment**
      * - Access the container exec Apis
+     * On **Swarm**
+     * - Access container exec Apis for Swarm tasks
      */
     Terminal = "Terminal",
     /**
@@ -11954,6 +11959,8 @@ export declare enum SpecificPermission {
      * - Access the `container inspect` apis
      * On **Stack / Deployment**
      * - Access `container inspect` apis for associated containers
+     * On **Swarm**
+     * - Access inspect apis for swarm nodes / services / tasks / stacks
      */
     Inspect = "Inspect",
     /**
@@ -11961,6 +11968,8 @@ export declare enum SpecificPermission {
      * - Read all container logs on the server
      * On **Stack / Deployment**
      * - Read the container logs
+     * On **Swarm**
+     * - Read swarm service / task logs
      */
     Logs = "Logs",
     /**

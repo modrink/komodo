@@ -37,6 +37,7 @@ pub mod procedure;
 pub mod prune;
 pub mod query;
 pub mod swarm;
+pub mod swarm_terminal;
 pub mod terminal;
 pub mod update;
 pub mod validations;

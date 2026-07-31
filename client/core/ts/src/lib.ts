@@ -315,6 +315,7 @@ export function KomodoClient(url: string, options: InitOptions) {
     execute_container_terminal,
     execute_stack_service_terminal,
     execute_deployment_terminal,
+    execute_swarm_task_terminal,
     execute_container_exec,
     execute_deployment_exec,
     execute_stack_exec,
@@ -576,6 +577,11 @@ export function KomodoClient(url: string, options: InitOptions) {
      * ```
      */
     execute_deployment_terminal,
+    /**
+     * Executes a command on a given Swarm task / terminal,
+     * and gives callbacks to handle the output as it comes in.
+     */
+    execute_swarm_task_terminal,
     /**
      * Executes a command on a given Server / Container / terminal,
      * and gives callbacks to handle the output as it comes in.

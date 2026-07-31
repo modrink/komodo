@@ -47,6 +47,7 @@ There are separate join commands for **worker** and **manager** nodes.
 
 :::tip
 After a node joins, add it as a Server in Komodo and (for managers) include it in the Swarm resource's `servers` list for redundancy.
+Worker Servers are also required for **task terminals** (`docker exec` runs on the node that owns the container).
 :::
 
 ## Nodes
@@ -61,6 +62,13 @@ Swarm services can be managed directly, or created from
 - View running, desired, and completed task counts.
 - Inspect service configuration and attached configs/secrets.
 - View and search service logs with grep support.
+
+## Tasks
+
+Each service replica is a Swarm **task** (one container on one node).
+
+- Inspect task details and view task-scoped logs.
+- **Terminals** — exec into a running task container from the Task page (requires `Terminal` permission on the Swarm). The node hosting the task must be a Komodo Server with Periphery; Komodo matches Swarm node hostname → Server name / system hostname.
 
 ## Stacks
 

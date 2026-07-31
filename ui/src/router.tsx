@@ -99,6 +99,10 @@ export const Router = () => {
               />
               <Route path=":id/swarm-task/:task" element={<SwarmTask />} />
               <Route
+                path=":id/swarm-task/:task/terminal/:terminal"
+                element={<Terminal />}
+              />
+              <Route
                 path=":id/swarm-config/:config"
                 element={<SwarmConfig />}
               />

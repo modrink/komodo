@@ -29,15 +29,16 @@ Permission levels alone are not quite enough to provide granular access control.
 Some features are additionally gated behind a specific permission for that feature.
 
 - **`Logs`**: User can retrieve docker / docker compose logs on the associated resource.
-  - Valid on `Server`, `Stack`, `Deployment`.
+  - Valid on `Server`, `Stack`, `Deployment`, `Swarm`.
   - For admins wanting this permission by default for all users with read permissions, see below on default user groups.
 - **`Inspect`**:  User can "inspect" docker containers.
-  - Valid on `Server`, `Stack`, `Deployment`.
+  - Valid on `Server`, `Stack`, `Deployment`, `Swarm`.
   - **On Servers**: Access to this api will expose all container environments on the given server,
   and can easily lead to secrets being leaked to unintended users if not protected.
 - **`Terminal`**: User can access the associated resource's terminal.
   - If given on a `Server`, this allows server level terminal access, and all container exec priviledges (Including attached `Stacks` / `Deployments`).
   - If given on a `Stack` or `Deployment`, this allows container exec terminal (even without `Terminal` on `Server`).
+  - If given on a `Swarm`, this allows container exec into running Swarm **tasks** (requires the task's node to be a Komodo Server with Periphery).
 - **`Attach`**: User can "attach" *other resources* to the resource.
   - If given on a `Server`, allows users to attach `Stacks`, `Deployments`, `Repos`, and `Builders`.
   - If given on a `Builder`, allows users to attach `Builds` and `Repos`.

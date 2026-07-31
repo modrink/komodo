@@ -11,6 +11,7 @@ const ALL_PERMISSIONS_BY_TYPE: {
     Types.SpecificPermission.Attach,
     Types.SpecificPermission.Inspect,
     Types.SpecificPermission.Logs,
+    Types.SpecificPermission.Terminal,
   ],
   Server: [
     Types.SpecificPermission.Attach,

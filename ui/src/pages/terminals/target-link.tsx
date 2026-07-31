@@ -3,6 +3,7 @@ import DockerResourceLink from "@/components/docker/link";
 import { Group } from "@mantine/core";
 import ResourceLink from "@/resources/link";
 import StackServiceLink from "@/components/stack-service-link";
+import SwarmResourceLink from "@/components/swarm/link";
 
 export default function TerminalTargetLink({ target }: { target: Types.TerminalTarget }) {
   switch (target.type) {
@@ -30,5 +31,17 @@ export default function TerminalTargetLink({ target }: { target: Types.TerminalT
       );
     case "Deployment":
       return <ResourceLink type="Deployment" id={target.params.deployment} />;
+    case "SwarmTask":
+      return (
+        <Group wrap="nowrap">
+          <ResourceLink type="Swarm" id={target.params.swarm} />
+          <SwarmResourceLink
+            type="Task"
+            swarmId={target.params.swarm}
+            resourceId={target.params.task}
+            name={target.params.task}
+          />
+        </Group>
+      );
   }
 }

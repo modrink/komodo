@@ -163,6 +163,8 @@ pub enum SpecificPermission {
   ///   - Access the terminal apis
   /// On **Stack / Deployment**
   ///   - Access the container exec Apis
+  /// On **Swarm**
+  ///   - Access container exec Apis for Swarm tasks
   Terminal,
   /// On **Server**
   ///   - Allowed to attach Stacks, Deployments, Repos, Builders to the Server
@@ -175,11 +177,15 @@ pub enum SpecificPermission {
   ///   - Access the `container inspect` apis
   /// On **Stack / Deployment**
   ///   - Access `container inspect` apis for associated containers
+  /// On **Swarm**
+  ///   - Access inspect apis for swarm nodes / services / tasks / stacks
   Inspect,
   /// On **Server**
   ///   - Read all container logs on the server
   /// On **Stack / Deployment**
   ///   - Read the container logs
+  /// On **Swarm**
+  ///   - Read swarm service / task logs
   Logs,
   /// On **Server**
   ///   - Read all the processes on the host

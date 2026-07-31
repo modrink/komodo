@@ -11,6 +11,7 @@ use komodo_client::{
     permission::PermissionLevel,
     server::Server,
     stack::Stack,
+    swarm::Swarm,
     terminal::{Terminal, TerminalSortBy, TerminalTarget},
     user::User,
   },
@@ -20,7 +21,11 @@ use mogh_resolver::Resolve;
 use reqwest::StatusCode;
 
 use crate::{
-  helpers::periphery_client, permission::get_check_permissions,
+  helpers::{
+    periphery_client,
+    terminal::get_swarm_task_periphery_container,
+  },
+  permission::get_check_permissions,
   resource,
 };
 
@@ -84,6 +89,19 @@ impl Resolve<ReadArgs> for ListTerminals {
           let server = resource::get::<Server>(&server).await?;
           list_terminals_on_server(&server, Some(target)).await?
         }
+        TerminalTarget::SwarmTask { swarm, task } => {
+          let (resolved, periphery, _) =
+            get_swarm_task_periphery_container(
+              swarm, task, user, false,
+            )
+            .await?;
+          periphery
+            .request(periphery_client::api::terminal::ListTerminals {
+              target: Some(resolved),
+            })
+            .await
+            .context("Failed to get Terminal list from Periphery")?
+        }
       },
     };
 
@@ -145,7 +163,7 @@ async fn list_all_terminals_for_user(
   user: &User,
   use_names: bool,
 ) -> mogh_error::Result<Vec<Terminal>> {
-  let (mut servers, stacks, deployments) = tokio::try_join!(
+  let (mut servers, stacks, deployments, swarms) = tokio::try_join!(
     resource::list_full_for_user::<Server>(
       Default::default(),
       None,
@@ -168,6 +186,14 @@ async fn list_all_terminals_for_user(
       &[]
     ),
     resource::list_full_for_user::<Deployment>(
+      Default::default(),
+      None,
+      None,
+      user,
+      PermissionLevel::Read.terminal(),
+      &[]
+    ),
+    resource::list_full_for_user::<Swarm>(
       Default::default(),
       None,
       None,
@@ -198,6 +224,17 @@ async fn list_all_terminals_for_user(
       let server =
         resource::get::<Server>(&deployment.config.server_id).await?;
       servers.push((server, false));
+    }
+  }
+  // Swarm task terminals live on worker Servers; include all Servers
+  // so SwarmTask terminals are discoverable when user has Swarm Terminal perm.
+  if !swarms.is_empty() {
+    let all_servers =
+      resource::list_all_resources::<Server>(None, None, None).await?;
+    for server in all_servers {
+      if !servers.iter().any(|(s, _)| s.id == server.id) {
+        servers.push((server, false));
+      }
     }
   }
 
@@ -275,6 +312,20 @@ async fn list_all_terminals_for_user(
                     terminal
                   },
                 )
+              }
+              TerminalTarget::SwarmTask { swarm, task } => {
+                swarms.iter().find(|s| s.id == swarm).map(|s| {
+                  terminal.target = TerminalTarget::SwarmTask {
+                    swarm: if use_names {
+                      s.name.clone()
+                    } else {
+                      s.id.clone()
+                    },
+                    task,
+                  };
+                  terminal.target_name = Some(s.name.clone());
+                  terminal
+                })
               }
             }
           })

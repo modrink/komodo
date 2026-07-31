@@ -3,13 +3,14 @@ import { ICONS } from "@/lib/icons";
 import { DataTable, SortableHeader } from "mogh_ui";
 import { Section, SectionProps } from "mogh_ui";
 import { ShowHideButton } from "mogh_ui";
-import { Group } from "@mantine/core";
+import { ActionIcon, Group, Tooltip } from "@mantine/core";
 import { Types } from "komodo_client";
 import SwarmResourceLink from "./link";
-import { useRead } from "@/lib/hooks";
+import { usePermissions, useRead } from "@/lib/hooks";
 import { swarmTaskStateIntention } from "@/lib/color";
 import { StatusBadge } from "mogh_ui";
 import { SearchInput } from "mogh_ui";
+import { Link } from "react-router-dom";
 
 export interface SwarmTasksSectionProps extends SectionProps {
   id: string;
@@ -28,6 +29,7 @@ export default function SwarmTasksSection({
   _search,
   ...sectionProps
 }: SwarmTasksSectionProps) {
+  const { specificTerminal } = usePermissions({ type: "Swarm", id });
   const nodes =
     useRead("ListSwarmNodes", { swarm: id }, { refetchInterval: 10_000 })
       .data ?? [];
@@ -159,17 +161,44 @@ export default function SwarmTasksSection({
                   : "Unknown",
               size: 200,
             },
-            // {
-            //   accessorKey: "CreatedAt",
-            //   header: ({ column }) => (
-            //     <SortableHeader column={column} title="Created" />
-            //   ),
-            //   cell: ({ row }) =>
-            //     row.original.CreatedAt
-            //       ? new Date(row.original.CreatedAt).toLocaleString()
-            //       : "Unknown",
-            //   size: 200,
-            // },
+            ...(specificTerminal
+              ? [
+                  {
+                    id: "actions",
+                    header: "Actions",
+                    cell: ({
+                      row,
+                    }: {
+                      row: { original: (typeof filtered)[number] };
+                    }) => {
+                      const taskId = row.original.ID;
+                      const canTerminal =
+                        row.original.State === Types.TaskState.RUNNING &&
+                        !!row.original.ContainerID &&
+                        !!taskId;
+                      if (!canTerminal) return null;
+                      return (
+                        <Tooltip label="Terminals">
+                          <ActionIcon
+                            variant="subtle"
+                            component={Link}
+                            to={`/swarms/${id}/swarm-task/${encodeURIComponent(taskId)}`}
+                            onClick={() => {
+                              localStorage.setItem(
+                                `swarm-${id}-task-${taskId}-tabs-v3`,
+                                JSON.stringify("Terminals"),
+                              );
+                            }}
+                          >
+                            <ICONS.Terminal size="1rem" />
+                          </ActionIcon>
+                        </Tooltip>
+                      );
+                    },
+                    size: 80,
+                  },
+                ]
+              : []),
           ]}
         />
       )}

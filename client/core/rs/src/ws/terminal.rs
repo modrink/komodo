@@ -97,6 +97,22 @@ impl KomodoClient {
       })
       .await
   }
+
+  pub async fn connect_swarm_task_terminal(
+    &self,
+    swarm: String,
+    task: String,
+    terminal: Option<String>,
+    init: Option<InitTerminal>,
+  ) -> anyhow::Result<TerminalWebsocket> {
+    self
+      .connect_terminal(&ConnectTerminalQuery {
+        target: TerminalTarget::SwarmTask { swarm, task },
+        terminal,
+        init,
+      })
+      .await
+  }
 }
 
 pub type TerminalWebsocketInner =

@@ -42,6 +42,13 @@ export declare const terminal_methods: (url: string, state: ClientState) => {
         command: string;
         init?: InitTerminal;
     }, callbacks?: ExecuteCallbacks) => Promise<void>;
+    execute_swarm_task_terminal: ({ swarm, task, terminal, command, init, }: {
+        swarm: string;
+        task: string;
+        terminal?: string;
+        command: string;
+        init?: InitTerminal;
+    }, callbacks?: ExecuteCallbacks) => Promise<void>;
     execute_container_exec: ({ server, container, shell, command, terminal, recreate, }: {
         /** Server Id or name */
         server: string;

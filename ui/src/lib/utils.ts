@@ -247,6 +247,8 @@ export function resourceTargetFromTerminalTarget(
       return { type: "Stack", id: target.params.stack };
     case "Deployment":
       return { type: "Deployment", id: target.params.deployment };
+    case "SwarmTask":
+      return { type: "Swarm", id: target.params.swarm };
   }
 }
 
@@ -266,6 +268,8 @@ export function terminalLink({
       return `/stacks/${target.params.stack}/service/${target.params.service}/terminal/${name}`;
     case "Deployment":
       return `/deployments/${target.params.deployment}/terminal/${name}`;
+    case "SwarmTask":
+      return `/swarms/${target.params.swarm}/swarm-task/${encodeURIComponent(target.params.task)}/terminal/${encodeURIComponent(name)}`;
   }
 }
 

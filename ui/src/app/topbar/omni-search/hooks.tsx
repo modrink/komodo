@@ -372,5 +372,7 @@ function terminalTargetDescription(
       return "Stack: " + target_name + ", Service: " + target.params.service;
     case "Deployment":
       return "Deployment: " + target_name;
+    case "SwarmTask":
+      return "Swarm: " + target_name + ", Task: " + target.params.task;
   }
 }

@@ -16,6 +16,15 @@ Connect to a running container in two modes:
 
 Container terminals are available on **Deployments**, **Stack services**, and any container visible on a server.
 
+## Swarm Task Terminals
+
+Open an exec shell into a **running Swarm task** container (same idea as Portainer's task console).
+
+- Open a Swarm **Task** page → **Terminals** tab (also available as an action icon on running tasks in task tables).
+- Requires the **`Terminal`** specific permission on the **Swarm** resource.
+- The node hosting the task must be registered as a Komodo **Server** with Periphery. Komodo matches the Swarm node hostname to the Server name or the Server's system hostname.
+- If no matching Server is found, terminal creation fails with a clear error — add the worker as a Server first.
+
 ## Multiple Sessions
 
 You can create multiple named terminal sessions on the same resource. Each session has its own independent PTY process and output history.
@@ -83,6 +92,15 @@ await komodo.execute_deployment_terminal({
   terminal: "check",
   command: "node --version",
   init: { command: "sh", recreate: "Always" },
+});
+
+// Swarm task terminal
+await komodo.execute_swarm_task_terminal({
+  swarm: "production-swarm",
+  task: "task-id",
+  terminal: "debug",
+  command: "env",
+  init: { command: "sh" },
 });
 ```
 

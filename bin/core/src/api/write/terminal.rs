@@ -25,6 +25,7 @@ use crate::{
       create_container_terminal_inner,
       get_deployment_periphery_container,
       get_stack_service_periphery_container,
+      get_swarm_task_periphery_container,
     },
   },
   permission::get_check_permissions,
@@ -76,6 +77,11 @@ impl Resolve<WriteArgs> for CreateTerminal {
       }
       TerminalTarget::Deployment { deployment } => {
         create_deployment_terminal(self, deployment, user)
+          .await
+          .map_err(Into::into)
+      }
+      TerminalTarget::SwarmTask { swarm, task } => {
+        create_swarm_task_terminal(self, swarm, task, user)
           .await
           .map_err(Into::into)
       }
@@ -158,6 +164,23 @@ async fn create_deployment_terminal(
   create_container_terminal_inner(req, &periphery, container).await
 }
 
+async fn create_swarm_task_terminal(
+  req: CreateTerminal,
+  swarm: String,
+  task: String,
+  user: &User,
+) -> anyhow::Result<Terminal> {
+  let (target, periphery, container) =
+    get_swarm_task_periphery_container(&swarm, &task, user, true)
+      .await?;
+  create_container_terminal_inner(
+    CreateTerminal { target, ..req },
+    &periphery,
+    container,
+  )
+  .await
+}
+
 //
 
 impl Resolve<WriteArgs> for DeleteTerminal {
@@ -220,6 +243,19 @@ impl Resolve<WriteArgs> for DeleteTerminal {
         // Must fix any incoming deployment name to id
         *deployment_id = deployment.id;
         resource::get::<Server>(&deployment.config.server_id).await?
+      }
+      TerminalTarget::SwarmTask { swarm, task } => {
+        let (target, periphery, _) =
+          get_swarm_task_periphery_container(swarm, task, user, false)
+            .await?;
+        periphery
+          .request(api::terminal::DeleteTerminal {
+            target,
+            terminal: self.terminal.clone(),
+          })
+          .await
+          .context("Failed to delete terminal on Periphery")?;
+        return Ok(NoData {});
       }
     };
 

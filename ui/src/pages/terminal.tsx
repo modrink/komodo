@@ -1,10 +1,12 @@
 import DockerResourceLink from "@/components/docker/link";
 import TargetTerminal from "@/components/terminal/target";
+import SwarmResourceLink from "@/components/swarm/link";
 import { useSetTitle } from "@/lib/hooks";
 import { ICONS } from "@/lib/icons";
 import { useDeployment } from "@/resources/deployment";
 import { useServer } from "@/resources/server";
 import { useStack } from "@/resources/stack";
+import { useSwarm } from "@/resources/swarm";
 import { Page } from "mogh_ui";
 import { Group, Text } from "@mantine/core";
 import { Types } from "komodo_client";
@@ -13,15 +15,16 @@ import { useParams } from "react-router-dom";
 import ResourceLink from "@/resources/link";
 import DeleteTerminal from "./terminals/delete";
 
-type WithTerminal = "servers" | "deployments" | "stacks" | string;
+type WithTerminal = "servers" | "deployments" | "stacks" | "swarms" | string;
 
 export default function Terminal() {
-  const { type, id, terminal, container, service } = useParams() as {
+  const { type, id, terminal, container, service, task } = useParams() as {
     type: WithTerminal;
     id: string;
     terminal: string;
     container: string | undefined;
     service: string | undefined;
+    task: string | undefined;
   };
   switch (type) {
     case "servers":
@@ -63,6 +66,17 @@ export default function Terminal() {
           id={id}
           terminal={terminal}
         />
+      );
+
+    case "swarms":
+      return task ? (
+        <SwarmTaskTerminalPage
+          id={id}
+          task={decodeURIComponent(task)}
+          terminal={decodeURIComponent(terminal)}
+        />
+      ) : (
+        <Text>Missing :task in URL</Text>
       );
 
     default:
@@ -155,12 +169,6 @@ function StackServiceTerminalPage({
       Link={
         <Group>
           <ResourceLink type="Stack" id={target.params.stack} />
-          {/* {target.params.service && (
-            <StackServiceLink
-              id={target.params.stack}
-              service={target.params.service}
-            />
-          )} */}
         </Group>
       }
     />
@@ -190,6 +198,43 @@ function DeploymentTerminalPage({
       terminal={terminal}
       target={target}
       Link={<ResourceLink type="Deployment" id={id} />}
+    />
+  );
+}
+
+function SwarmTaskTerminalPage({
+  id,
+  task,
+  terminal,
+}: {
+  id: string;
+  task: string;
+  terminal: string;
+}) {
+  const swarm = useSwarm(id);
+  useSetTitle(`${swarm?.name} | Task ${task} Terminal | ${terminal}`);
+  const target: Types.TerminalTarget = useMemo(
+    () => ({
+      type: "SwarmTask",
+      params: { swarm: id, task },
+    }),
+    [id, task],
+  );
+  return (
+    <TerminalLayout
+      terminal={terminal}
+      target={target}
+      Link={
+        <Group wrap="nowrap">
+          <ResourceLink type="Swarm" id={id} />
+          <SwarmResourceLink
+            type="Task"
+            swarmId={id}
+            resourceId={task}
+            name={task}
+          />
+        </Group>
+      }
     />
   );
 }
