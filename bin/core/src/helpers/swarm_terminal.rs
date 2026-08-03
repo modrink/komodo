@@ -28,9 +28,7 @@ pub fn check_swarm_task_running_gate(
     ));
   }
   if container_id.is_none_or(|id| id.is_empty()) {
-    return Err(anyhow!(
-      "Swarm task {task_id} has no container ID"
-    ));
+    return Err(anyhow!("Swarm task {task_id} has no container ID"));
   }
   Ok(())
 }
@@ -91,7 +89,10 @@ pub fn identities_match(a: &str, b: &str) -> bool {
     || a_short.eq_ignore_ascii_case(b_short)
 }
 
-pub fn push_unique_candidate(out: &mut Vec<String>, raw: Option<&str>) {
+pub fn push_unique_candidate(
+  out: &mut Vec<String>,
+  raw: Option<&str>,
+) {
   let Some(raw) = raw else {
     return;
   };
@@ -123,7 +124,10 @@ pub fn node_identity_candidates_from_inspect(
   let mut out = Vec::new();
   push_unique_candidate(
     &mut out,
-    node.description.as_ref().and_then(|d| d.hostname.as_deref()),
+    node
+      .description
+      .as_ref()
+      .and_then(|d| d.hostname.as_deref()),
   );
   push_unique_candidate(
     &mut out,
@@ -135,10 +139,7 @@ pub fn node_identity_candidates_from_inspect(
   );
   push_unique_candidate(
     &mut out,
-    node
-      .manager_status
-      .as_ref()
-      .and_then(|s| s.addr.as_deref()),
+    node.manager_status.as_ref().and_then(|s| s.addr.as_deref()),
   );
   out
 }
@@ -149,7 +150,10 @@ pub fn server_identity_candidates(
 ) -> Vec<String> {
   let mut out = Vec::new();
   push_unique_candidate(&mut out, Some(server.name.as_str()));
-  push_unique_candidate(&mut out, Some(server.config.address.as_str()));
+  push_unique_candidate(
+    &mut out,
+    Some(server.config.address.as_str()),
+  );
   if !server.config.external_address.is_empty() {
     push_unique_candidate(
       &mut out,
@@ -190,7 +194,9 @@ pub fn match_server_to_node_identities(
   None
 }
 
-pub fn no_server_match_error(node_candidates: &[String]) -> anyhow::Error {
+pub fn no_server_match_error(
+  node_candidates: &[String],
+) -> anyhow::Error {
   let listed = if node_candidates.is_empty() {
     "(none)".to_string()
   } else {
@@ -275,7 +281,9 @@ mod tests {
     push_unique_candidate(&mut cands, Some("prod-worker.local"));
     let servers = vec![(server.clone(), cands)];
     let node = vec!["prod-worker.local".to_string()];
-    assert!(match_server_to_node_identities(&servers, &node).is_some());
+    assert!(
+      match_server_to_node_identities(&servers, &node).is_some()
+    );
   }
 
   #[test]
@@ -286,7 +294,9 @@ mod tests {
       server_identity_candidates(&server, None),
     )];
     let node = vec!["node1.cluster.local".to_string()];
-    assert!(match_server_to_node_identities(&servers, &node).is_some());
+    assert!(
+      match_server_to_node_identities(&servers, &node).is_some()
+    );
   }
 
   #[test]
@@ -298,12 +308,15 @@ mod tests {
       server_identity_candidates(&server, None),
     )];
     let node = vec!["worker-a.internal".to_string()];
-    assert!(match_server_to_node_identities(&servers, &node).is_some());
+    assert!(
+      match_server_to_node_identities(&servers, &node).is_some()
+    );
   }
 
   #[test]
   fn no_match_error_lists_candidates() {
-    let err = no_server_match_error(&["node-x".into(), "10.1.1.1".into()]);
+    let err =
+      no_server_match_error(&["node-x".into(), "10.1.1.1".into()]);
     let msg = format!("{err:#}");
     assert!(msg.contains("node-x"));
     assert!(msg.contains("10.1.1.1"));
@@ -318,20 +331,24 @@ mod tests {
       true,
     )
     .unwrap();
-    assert!(check_swarm_task_running_gate(
-      "t1",
-      Some(TaskState::SHUTDOWN),
-      Some("abc"),
-      true,
-    )
-    .is_err());
-    assert!(check_swarm_task_running_gate(
-      "t1",
-      Some(TaskState::RUNNING),
-      None,
-      true,
-    )
-    .is_err());
+    assert!(
+      check_swarm_task_running_gate(
+        "t1",
+        Some(TaskState::SHUTDOWN),
+        Some("abc"),
+        true,
+      )
+      .is_err()
+    );
+    assert!(
+      check_swarm_task_running_gate(
+        "t1",
+        Some(TaskState::RUNNING),
+        None,
+        true,
+      )
+      .is_err()
+    );
     check_swarm_task_running_gate(
       "t1",
       Some(TaskState::SHUTDOWN),

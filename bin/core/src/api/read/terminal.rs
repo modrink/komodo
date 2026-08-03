@@ -22,8 +22,7 @@ use reqwest::StatusCode;
 
 use crate::{
   helpers::{
-    periphery_client,
-    terminal::get_swarm_task_periphery_container,
+    periphery_client, terminal::get_swarm_task_periphery_container,
   },
   permission::get_check_permissions,
   resource,
@@ -230,7 +229,8 @@ async fn list_all_terminals_for_user(
   // so SwarmTask terminals are discoverable when user has Swarm Terminal perm.
   if !swarms.is_empty() {
     let all_servers =
-      resource::list_all_resources::<Server>(None, None, None).await?;
+      resource::list_all_resources::<Server>(None, None, None)
+        .await?;
     for server in all_servers {
       if !servers.iter().any(|(s, _)| s.id == server.id) {
         servers.push((server, false));

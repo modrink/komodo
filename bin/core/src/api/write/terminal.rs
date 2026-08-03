@@ -246,8 +246,10 @@ impl Resolve<WriteArgs> for DeleteTerminal {
       }
       TerminalTarget::SwarmTask { swarm, task } => {
         let (target, periphery, _) =
-          get_swarm_task_periphery_container(swarm, task, user, false)
-            .await?;
+          get_swarm_task_periphery_container(
+            swarm, task, user, false,
+          )
+          .await?;
         periphery
           .request(api::terminal::DeleteTerminal {
             target,

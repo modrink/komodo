@@ -14,13 +14,13 @@ use komodo_client::{
 use periphery_client::api;
 
 use crate::{
-  helpers::{
-    periphery_client, swarm::swarm_request, swarm_terminal,
-  },
+  helpers::{periphery_client, swarm::swarm_request, swarm_terminal},
   periphery::PeripheryClient,
   permission::get_check_permissions,
   resource,
-  state::{server_status_cache, stack_status_cache, swarm_status_cache},
+  state::{
+    server_status_cache, stack_status_cache, swarm_status_cache,
+  },
 };
 
 pub async fn setup_target_for_user(
@@ -443,16 +443,15 @@ pub async fn get_swarm_task_periphery_container(
 
   let container = container_id.unwrap_or_default();
 
-  let node_candidates =
-    resolve_swarm_node_identity_candidates(
-      &swarm.id,
-      &swarm.config.server_ids,
-      node_id,
-    )
-    .await
-    .with_context(|| {
-      format!("Failed to resolve identity for Swarm node {node_id}")
-    })?;
+  let node_candidates = resolve_swarm_node_identity_candidates(
+    &swarm.id,
+    &swarm.config.server_ids,
+    node_id,
+  )
+  .await
+  .with_context(|| {
+    format!("Failed to resolve identity for Swarm node {node_id}")
+  })?;
 
   let server =
     find_server_for_swarm_node_identities(&node_candidates).await?;
