@@ -39,11 +39,13 @@ export default function StackTabs({ id }: { id: string }) {
     state === Types.StackState.Unknown ||
     state === Types.StackState.Down ||
     !specificLogs;
+  // Swarm stacks: no stack-level shell (multi-service / multi-node).
+  // Use Stack Service → Terminals (task picker) or Swarm Task page.
+  const swarmStack = !!info?.swarm_id;
   const terminalDisabled =
     !specificTerminal ||
     containerTerminalsDisabled ||
-    // Not attached to swarm
-    !!info?.swarm_id ||
+    swarmStack ||
     // All services are not running
     services?.every(
       (service) =>
@@ -53,7 +55,7 @@ export default function StackTabs({ id }: { id: string }) {
 
   const view =
     (_view === "Info" && hideInfo) ||
-    (_view === "Terminals" && terminalDisabled) ||
+    (_view === "Terminals" && (terminalDisabled || swarmStack)) ||
     (_view === "Log" && hideLogs)
       ? "Config"
       : _view;
@@ -81,7 +83,8 @@ export default function StackTabs({ id }: { id: string }) {
       {
         value: "Terminals",
         disabled: terminalDisabled,
-        hidden: !specificTerminal,
+        // Hide on swarm — open a Service → Terminals (pick task) instead
+        hidden: !specificTerminal || swarmStack,
         icon: ICONS.Terminal,
       },
     ],
@@ -91,6 +94,7 @@ export default function StackTabs({ id }: { id: string }) {
       hideLogs,
       specificTerminal,
       terminalDisabled,
+      swarmStack,
     ],
   );
 

@@ -68,7 +68,7 @@ Swarm services can be managed directly, or created from
 Each service replica is a Swarm **task** (one container on one node).
 
 - Inspect task details and view task-scoped logs.
-- **Terminals** — exec into a running task container from the Task page (requires `Terminal` permission on the Swarm). The node hosting the task must be a Komodo Server with Periphery; Komodo matches Swarm node hostname → Server name / system hostname.
+- **Terminals** — exec into a running task container from the Task page, or from a Stack Service **Terminals** tab (task picker → same Task terminals). Stack-level Terminals stay compose-only. Requires `Terminal` on the Swarm. The node hosting the task must be a Komodo Server with Periphery; Komodo matches Swarm node hostname → Server name / system hostname.
 
 ## Stacks
 

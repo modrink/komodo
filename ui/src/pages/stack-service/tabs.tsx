@@ -40,8 +40,14 @@ export default function StackServiceTabs({
     type: "Stack",
     id: stack.id,
   });
+  const swarmId = stack.info.swarm_id;
+  const { specificTerminal: swarmTerminal } = usePermissions({
+    type: "Swarm",
+    id: swarmId,
+  });
 
   const down = !swarmService && !container;
+  const isSwarm = !!swarmService && !!swarmId;
 
   const containerTerminalsDisabled =
     useServer(stack.info.server_id)?.info.container_terminals_disabled ?? false;
@@ -49,10 +55,19 @@ export default function StackServiceTabs({
   const logDisabled = !specificLogs || down;
   const inspectDisabled = !specificInspect || down;
 
-  const terminalDisabled =
+  const composeTerminalDisabled =
     !specificTerminal ||
     containerTerminalsDisabled ||
     container?.state !== Types.ContainerStateStatusEnum.Running;
+
+  // Swarm: Terminals tab = task picker → Swarm Task terminals (not Stack resolve)
+  const swarmTerminalDisabled = !specificTerminal && !swarmTerminal;
+  const terminalDisabled = isSwarm
+    ? swarmTerminalDisabled
+    : composeTerminalDisabled;
+  const terminalHidden = isSwarm
+    ? swarmTerminalDisabled
+    : !container || !specificTerminal;
 
   const view =
     (!stack.info.swarm_id && _view === "Tasks") ||
@@ -81,11 +96,17 @@ export default function StackServiceTabs({
       {
         value: "Terminals",
         disabled: terminalDisabled,
-        hidden: !container,
+        hidden: terminalHidden,
         icon: ICONS.Terminal,
       },
     ],
-    [!swarmService, logDisabled, inspectDisabled, terminalDisabled],
+    [
+      !!swarmService,
+      logDisabled,
+      inspectDisabled,
+      terminalDisabled,
+      terminalHidden,
+    ],
   );
 
   const Selector = (
@@ -114,7 +135,7 @@ export default function StackServiceTabs({
     case "Tasks":
       View = (
         <SwarmServiceTasksSection
-          id={stack.info.swarm_id}
+          id={swarmId}
           serviceId={swarmService?.ID}
           titleOther={Selector}
           _search={_search}
@@ -141,7 +162,17 @@ export default function StackServiceTabs({
       );
       break;
     case "Terminals":
-      View = <TerminalSection target={target} titleOther={Selector} />;
+      View = isSwarm ? (
+        <SwarmServiceTasksSection
+          id={swarmId}
+          serviceId={swarmService?.ID}
+          titleOther={Selector}
+          _search={_search}
+          hint="Pick a running task — Actions → Terminal (opens Swarm Task terminals)."
+        />
+      ) : (
+        <TerminalSection target={target} titleOther={Selector} />
+      );
       break;
   }
 

@@ -3,7 +3,7 @@ import { ICONS } from "@/lib/icons";
 import { DataTable, SortableHeader } from "mogh_ui";
 import { Section, SectionProps } from "mogh_ui";
 import { ShowHideButton } from "mogh_ui";
-import { ActionIcon, Group, Tooltip } from "@mantine/core";
+import { ActionIcon, Group, Text, Tooltip } from "@mantine/core";
 import { Types } from "komodo_client";
 import SwarmResourceLink from "./link";
 import { usePermissions, useRead } from "@/lib/hooks";
@@ -11,6 +11,7 @@ import { swarmTaskStateIntention } from "@/lib/color";
 import { StatusBadge } from "mogh_ui";
 import { SearchInput } from "mogh_ui";
 import { Link } from "react-router-dom";
+import { ReactNode } from "react";
 
 export interface SwarmTasksSectionProps extends SectionProps {
   id: string;
@@ -18,6 +19,8 @@ export interface SwarmTasksSectionProps extends SectionProps {
   show?: boolean;
   setShow?: (show: boolean) => void;
   _search?: [string, (search: string) => void];
+  /** Shown above the table (e.g. Stack Service → Terminals picker). */
+  hint?: ReactNode;
 }
 
 export default function SwarmTasksSection({
@@ -27,6 +30,7 @@ export default function SwarmTasksSection({
   setShow,
   titleOther,
   _search,
+  hint,
   ...sectionProps
 }: SwarmTasksSectionProps) {
   const { specificTerminal } = usePermissions({ type: "Swarm", id });
@@ -70,6 +74,11 @@ export default function SwarmTasksSection({
       }
       {...sectionProps}
     >
+      {hint && (
+        <Text size="sm" c="dimmed" mb="sm">
+          {hint}
+        </Text>
+      )}
       {show && (
         <DataTable
           tableKey="swarm-tasks"
