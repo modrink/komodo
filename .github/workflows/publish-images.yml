@@ -1,12 +1,12 @@
 # FORK ONLY — do not upstream.
 # Publishes komodo-core + komodo-periphery to ghcr.io/modrink.
-# Patterns borrowed from tutotoons/web_new build.yml and modrink/mira release.yml.
 #
-# Perf notes (fork):
-# - Cargo gate uses Swatinem/rust-cache (warm ~1–2m vs cold ~8m).
-# - Gate runs in parallel with Docker (no needs:) so wall clock ≈ max(gate, docker).
-# - Drop --verbose (log spam). Gate failure still fails the workflow; images may
-#   already be pushing — treat gate as required check on PRs / before trusting tags.
+# Perf:
+# - Tag pushes: skip Cargo gate (trust main CI); wall ≈ Docker only.
+# - PRs/dispatch: gate with rust-cache; fmt + test only (no redundant build).
+# - Gate ∥ Docker when both run.
+# - Path filter: skip unchanged component on PRs (tags always both).
+# - Dockerfiles: cargo-chef + yarn lockfile layer cache.
 
 name: Publish images (fork)
 
@@ -29,14 +29,19 @@ on:
       - "lib/**"
       - "bin/core/**"
       - "bin/periphery/**"
+      - "bin/cli/**"
+      - "xtask/**"
   workflow_dispatch:
     inputs:
       ref:
         description: Branch or tag to build
         required: true
         default: main
+      skip_gate:
+        description: Skip Cargo gate
+        type: boolean
+        default: false
 
-# Default-deny; jobs widen as needed (mira).
 permissions:
   contents: read
 
@@ -48,9 +53,82 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  changes:
+    name: Detect changes
+    if: github.repository == 'modrink/komodo'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ env.CHECKOUT_REF }}
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            core:
+              - 'bin/core/**'
+              - 'bin/cli/**'
+              - 'bin/entrypoint.sh'
+              - 'ui/**'
+              - 'client/core/**'
+              - 'client/periphery/**'
+              - 'lib/**'
+              - 'xtask/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'config/core.config.toml'
+            periphery:
+              - 'bin/periphery/**'
+              - 'bin/entrypoint.sh'
+              - 'client/core/rs/**'
+              - 'client/periphery/**'
+              - 'lib/**'
+              - 'xtask/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+            workflow:
+              - '.github/workflows/publish-images.yml'
+              - 'bin/core/aio.Dockerfile'
+              - 'bin/periphery/aio.Dockerfile'
+
+      - name: Build matrix JSON
+        id: set
+        run: |
+          core=true
+          periphery=true
+          if [ "${{ github.event_name }}" = "pull_request" ] && \
+             [ "${{ steps.filter.outputs.workflow }}" != "true" ]; then
+            core="${{ steps.filter.outputs.core }}"
+            periphery="${{ steps.filter.outputs.periphery }}"
+          fi
+          # Always build at least one component (workflow-only PRs already force both)
+          if [ "$core" != "true" ] && [ "$periphery" != "true" ]; then
+            core=true
+            periphery=true
+          fi
+          parts=()
+          if [ "$core" = "true" ]; then
+            parts+=('{"component":"core","dockerfile":"bin/core/aio.Dockerfile","image":"ghcr.io/modrink/komodo-core"}')
+          fi
+          if [ "$periphery" = "true" ]; then
+            parts+=('{"component":"periphery","dockerfile":"bin/periphery/aio.Dockerfile","image":"ghcr.io/modrink/komodo-periphery"}')
+          fi
+          json=$(printf '%s\n' "${parts[@]}" | paste -sd, -)
+          echo "matrix={\"include\":[${json}]}" >> "$GITHUB_OUTPUT"
+          echo "matrix={\"include\":[${json}]}"
+
   ci-gate:
     name: Cargo gate
-    if: github.repository == 'modrink/komodo'
+    # Skip on tag pushes (main CI already covered the commit). Optional skip on dispatch.
+    if: |
+      github.repository == 'modrink/komodo' &&
+      github.event_name != 'push' &&
+      (github.event_name != 'workflow_dispatch' || inputs.skip_gate != true)
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -75,16 +153,13 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: Build
-        run: cargo build
-
       - name: Test
         run: cargo test
 
-  # Parallel with ci-gate — do not block on gate (saves ~8m wall on warm Docker).
   build-and-push:
     name: build (${{ matrix.component }})
-    if: github.repository == 'modrink/komodo'
+    if: github.repository == 'modrink/komodo' && needs.changes.result == 'success'
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 90
     concurrency:
@@ -95,14 +170,7 @@ jobs:
       packages: write
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - component: core
-            dockerfile: bin/core/aio.Dockerfile
-            image: ghcr.io/modrink/komodo-core
-          - component: periphery
-            dockerfile: bin/periphery/aio.Dockerfile
-            image: ghcr.io/modrink/komodo-periphery
+      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -133,9 +201,6 @@ jobs:
         with:
           context: git
           images: ${{ matrix.image }}
-          # Stable tag → version / major.minor / major + latest.
-          # Prerelease (contains '-') → full version only, no latest.
-          # Non-semver dispatch ref → sha + sanitized ref slug.
           tags: |
             type=semver,pattern={{version}},value=${{ env.SEMVER_SOURCE }},enable=${{ startsWith(env.SEMVER_SOURCE, 'v') }}
             type=semver,pattern={{major}}.{{minor}},value=${{ env.SEMVER_SOURCE }},enable=${{ startsWith(env.SEMVER_SOURCE, 'v') && !contains(env.SEMVER_SOURCE, '-') }}
@@ -159,22 +224,25 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: |
+            type=gha,scope=komodo-${{ matrix.component }}-v2
+            type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.component }}-v2
             type=gha,scope=komodo-${{ matrix.component }}
             type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.component }}
           cache-to: |
-            type=gha,mode=max,scope=komodo-${{ matrix.component }}
-            type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.component }},mode=max,ignore-error=true
+            type=gha,mode=max,scope=komodo-${{ matrix.component }}-v2
+            type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.component }}-v2,mode=max,ignore-error=true
 
-  # Aggregates gate + builds so one required check covers the whole workflow.
   publish-ok:
     name: Publish OK
     if: github.repository == 'modrink/komodo' && always()
-    needs: [ci-gate, build-and-push]
+    needs: [changes, ci-gate, build-and-push]
     runs-on: ubuntu-latest
     steps:
-      - name: Require all jobs green
+      - name: Require jobs green (gate may skip)
         run: |
+          echo "changes=${{ needs.changes.result }}"
           echo "ci-gate=${{ needs.ci-gate.result }}"
           echo "build-and-push=${{ needs.build-and-push.result }}"
-          test "${{ needs.ci-gate.result }}" = "success"
+          test "${{ needs.changes.result }}" = "success"
+          case "${{ needs.ci-gate.result }}" in success|skipped) ;; *) exit 1 ;; esac
           test "${{ needs.build-and-push.result }}" = "success"

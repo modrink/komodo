@@ -1,10 +1,12 @@
 ## All in one, multi stage compile + runtime Docker build for your architecture.
+## cargo-chef: deps layer cached when Cargo.lock unchanged.
 
-# Build Core
-FROM rust:1.97.1-trixie AS core-builder
-RUN cargo install cargo-strip
-
+# Shared chef toolchain (matches previous rust:1.97.1-trixie)
+FROM docker.io/lukemathwalker/cargo-chef:latest-rust-1.97.1-trixie AS chef
+RUN cargo install cargo-strip --locked
 WORKDIR /builder
+
+FROM chef AS planner
 COPY Cargo.toml Cargo.lock ./
 COPY ./lib ./lib
 COPY ./client/core/rs ./client/core/rs
@@ -12,19 +14,35 @@ COPY ./client/periphery ./client/periphery
 COPY ./bin/core ./bin/core
 COPY ./bin/cli ./bin/cli
 COPY ./xtask ./xtask
+RUN cargo chef prepare --recipe-path recipe.json
 
-# Compile app
+FROM chef AS core-builder
+COPY --from=planner /builder/recipe.json recipe.json
+# Cache dependency builds (invalidates only on lock/manifest recipe change)
+RUN cargo chef cook --release --recipe-path recipe.json \
+  --package komodo_core --package komodo_cli
+COPY Cargo.toml Cargo.lock ./
+COPY ./lib ./lib
+COPY ./client/core/rs ./client/core/rs
+COPY ./client/periphery ./client/periphery
+COPY ./bin/core ./bin/core
+COPY ./bin/cli ./bin/cli
+COPY ./xtask ./xtask
 RUN cargo build -p komodo_core --release && \
   cargo build -p komodo_cli --release && \
   cargo strip
 
-# Build UI
+# Build UI — yarn deps layer cached when lockfiles unchanged
 FROM node:22.12-alpine AS ui-builder
 WORKDIR /builder
-COPY ./ui ./ui
+COPY ./client/core/ts/package.json ./client/core/ts/yarn.lock ./client/
+COPY ./ui/package.json ./ui/yarn.lock ./ui/
+RUN cd client && yarn --frozen-lockfile && yarn link
+RUN cd ui && yarn link komodo_client && yarn --frozen-lockfile
 COPY ./client/core/ts ./client
-RUN cd client && yarn && yarn build && yarn link
-RUN cd ui && yarn link komodo_client && yarn && yarn build
+COPY ./ui ./ui
+RUN cd client && yarn build
+RUN cd ui && yarn build
 
 # Final Image
 FROM debian:trixie-slim
