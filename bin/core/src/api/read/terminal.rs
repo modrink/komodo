@@ -64,17 +64,18 @@ impl Resolve<ReadArgs> for ListTerminals {
           .await?;
           list_terminals_on_server(&server, Some(target)).await?
         }
-        TerminalTarget::Stack { stack, .. } => {
-          let server = get_check_permissions::<Stack>(
+        TerminalTarget::Stack {
+          stack,
+          service,
+          task,
+        } => {
+          list_stack_terminals(
             stack,
+            service.as_deref(),
+            task.as_deref(),
             user,
-            PermissionLevel::Read.terminal(),
           )
           .await?
-          .config
-          .server_id;
-          let server = resource::get::<Server>(&server).await?;
-          list_terminals_on_server(&server, Some(target)).await?
         }
         TerminalTarget::Deployment { deployment } => {
           let server = get_check_permissions::<Deployment>(
@@ -284,20 +285,23 @@ async fn list_all_terminals_for_user(
                   terminal
                 })
               }
-              TerminalTarget::Stack { stack, service } => {
-                stacks.iter().find(|s| s.id == stack).map(|s| {
-                  terminal.target = TerminalTarget::Stack {
-                    stack: if use_names {
-                      s.name.clone()
-                    } else {
-                      s.id.clone()
-                    },
-                    service,
-                  };
-                  terminal.target_name = Some(s.name.clone());
-                  terminal
-                })
-              }
+              TerminalTarget::Stack {
+                stack,
+                service,
+                task,
+              } => stacks.iter().find(|s| s.id == stack).map(|s| {
+                terminal.target = TerminalTarget::Stack {
+                  stack: if use_names {
+                    s.name.clone()
+                  } else {
+                    s.id.clone()
+                  },
+                  service,
+                  task,
+                };
+                terminal.target_name = Some(s.name.clone());
+                terminal
+              }),
               TerminalTarget::Deployment { deployment } => {
                 deployments.iter().find(|d| d.id == deployment).map(
                   |d| {
@@ -357,4 +361,120 @@ async fn list_terminals_on_server(
       )
     })
     .map_err(Into::into)
+}
+
+async fn list_stack_terminals(
+  stack_id: &str,
+  service: Option<&str>,
+  task: Option<&str>,
+  user: &User,
+) -> mogh_error::Result<Vec<Terminal>> {
+  use crate::helpers::terminal::get_swarm_task_periphery_container;
+  use crate::state::{stack_status_cache, swarm_status_cache};
+  use std::collections::HashSet;
+
+  let stack = get_check_permissions::<Stack>(
+    stack_id,
+    user,
+    PermissionLevel::Read.terminal(),
+  )
+  .await?;
+
+  let filter = TerminalTarget::Stack {
+    stack: stack.id.clone(),
+    service: service.map(str::to_string),
+    task: task.map(str::to_string),
+  };
+
+  if stack.config.swarm_id.is_empty() {
+    let server =
+      resource::get::<Server>(&stack.config.server_id).await?;
+    return list_terminals_on_server(&server, Some(filter)).await;
+  }
+
+  // Exact task → that worker only
+  if let Some(task_id) = task {
+    let (_, periphery, _) = get_swarm_task_periphery_container(
+      &stack.config.swarm_id,
+      task_id,
+      user,
+      false,
+    )
+    .await?;
+    return periphery
+      .request(periphery_client::api::terminal::ListTerminals {
+        target: Some(filter),
+      })
+      .await
+      .context("Failed to get Terminal list from Periphery")
+      .map_err(Into::into);
+  }
+
+  let mut swarm_service_ids = HashSet::new();
+  if let Some(st) = stack_status_cache().get(&stack.id).await {
+    for svc in &st.curr.services {
+      if let Some(want) = service {
+        if svc.service.as_str() != want {
+          continue;
+        }
+      }
+      if let Some(id) =
+        svc.swarm_service.as_ref().and_then(|s| s.id.clone())
+      {
+        swarm_service_ids.insert(id);
+      }
+    }
+  }
+
+  let cache = swarm_status_cache()
+    .get_or_insert_default(&stack.config.swarm_id)
+    .await;
+  let tasks = cache
+    .lists
+    .as_ref()
+    .map(|l| l.tasks.as_slice())
+    .unwrap_or(&[]);
+
+  let mut seen_nodes = HashSet::new();
+  let mut out = Vec::new();
+
+  for t in tasks {
+    let Some(sid) = t.service_id.as_deref() else {
+      continue;
+    };
+    if !swarm_service_ids.is_empty()
+      && !swarm_service_ids.contains(sid)
+    {
+      continue;
+    }
+    let Some(task_id) = t.id.as_deref() else {
+      continue;
+    };
+    let node = t.node_id.clone().unwrap_or_default();
+    if !seen_nodes.insert(node) {
+      continue;
+    }
+    let Ok((_, periphery, _)) = get_swarm_task_periphery_container(
+      &stack.config.swarm_id,
+      task_id,
+      user,
+      false,
+    )
+    .await
+    else {
+      continue;
+    };
+    if let Ok(mut terms) = periphery
+      .request(periphery_client::api::terminal::ListTerminals {
+        target: Some(filter.clone()),
+      })
+      .await
+    {
+      out.append(&mut terms);
+    }
+  }
+
+  out.sort_by(|a, b| a.name.cmp(&b.name));
+  out.dedup_by(|a, b| a.name == b.name && a.target == b.target);
+  Ok(out)
 }

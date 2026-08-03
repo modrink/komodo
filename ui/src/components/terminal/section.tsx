@@ -6,18 +6,21 @@ import { useState } from "react";
 import { ActionIcon, Box, Button, Group, Stack, Text } from "@mantine/core";
 import TargetTerminal from "./target";
 import { ICONS } from "@/lib/icons";
-import NewTerminal from "./new";
+import NewTerminal, { TerminalTaskOption } from "./new";
 import { notifications } from "@mantine/notifications";
 
 export interface TerminalSectionProps extends Omit<SectionProps, "children"> {
   target: Types.TerminalTarget;
   /** Use with Stack, where each service is a potential target */
   services?: string[];
+  /** Swarm Stack: RUNNING tasks to pick (auto if length === 1) */
+  tasks?: TerminalTaskOption[];
 }
 
 export default function TerminalSection({
   target,
   services,
+  tasks,
   ...props
 }: TerminalSectionProps) {
   const { data: terminals, refetch: refetchTerminals } = useRead(
@@ -108,6 +111,7 @@ export default function TerminalSection({
           refetchTerminals={refetchTerminals}
           setSelected={setSelected}
           services={services}
+          tasks={tasks}
         />
 
         {terminals?.[0] ? (

@@ -5846,6 +5846,8 @@ export type TerminalTarget =
 	| { type: "Stack", params: {
 	stack: string;
 	service?: string;
+	/** Swarm: optional task id; Core auto-picks if exactly one RUNNING */
+	task?: string;
 }}
 	| { type: "Deployment", params: {
 	deployment: string;

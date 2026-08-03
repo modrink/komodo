@@ -67,13 +67,19 @@ impl Resolve<WriteArgs> for CreateTerminal {
           .await
           .map_err(Into::into)
       }
-      TerminalTarget::Stack { stack, service } => {
+      TerminalTarget::Stack {
+        stack,
+        service,
+        task,
+      } => {
         let service = service
           .context("Must provide 'target.params.service'")
           .status_code(StatusCode::BAD_REQUEST)?;
-        create_stack_service_terminal(self, stack, service, user)
-          .await
-          .map_err(Into::into)
+        create_stack_service_terminal(
+          self, stack, service, task, user,
+        )
+        .await
+        .map_err(Into::into)
       }
       TerminalTarget::Deployment { deployment } => {
         create_deployment_terminal(self, deployment, user)
@@ -146,12 +152,23 @@ async fn create_stack_service_terminal(
   req: CreateTerminal,
   stack: String,
   service: String,
+  task: Option<String>,
   user: &User,
 ) -> anyhow::Result<Terminal> {
-  let (_, periphery, container) =
-    get_stack_service_periphery_container(&stack, &service, user)
-      .await?;
-  create_container_terminal_inner(req, &periphery, container).await
+  let (target, periphery, container) =
+    get_stack_service_periphery_container(
+      &stack,
+      &service,
+      task.as_deref(),
+      user,
+    )
+    .await?;
+  create_container_terminal_inner(
+    CreateTerminal { target, ..req },
+    &periphery,
+    container,
+  )
+  .await
 }
 
 async fn create_deployment_terminal(
@@ -219,7 +236,9 @@ impl Resolve<WriteArgs> for DeleteTerminal {
         .await?
       }
       TerminalTarget::Stack {
-        stack: stack_id, ..
+        stack: stack_id,
+        service,
+        task,
       } => {
         let stack = get_check_permissions::<Stack>(
           stack_id,
@@ -228,7 +247,37 @@ impl Resolve<WriteArgs> for DeleteTerminal {
         )
         .await?;
         // Must fix any incoming stack name to id
-        *stack_id = stack.id;
+        *stack_id = stack.id.clone();
+        if !stack.config.swarm_id.is_empty() {
+          let task_id = task
+            .as_ref()
+            .context("Must provide 'target.params.task' to delete a Swarm Stack terminal")
+            .status_code(StatusCode::BAD_REQUEST)?;
+          let (resolved, periphery, _) =
+            get_swarm_task_periphery_container(
+              &stack.config.swarm_id,
+              task_id,
+              user,
+              false,
+            )
+            .await?;
+          // Prefer Stack filter (how we store swarm-via-stack terminals);
+          // fall back to resolved SwarmTask if needed.
+          let del_target = TerminalTarget::Stack {
+            stack: stack.id,
+            service: service.clone(),
+            task: Some(task_id.clone()),
+          };
+          let _ = resolved;
+          periphery
+            .request(api::terminal::DeleteTerminal {
+              target: del_target,
+              terminal: self.terminal.clone(),
+            })
+            .await
+            .context("Failed to delete terminal on Periphery")?;
+          return Ok(NoData {});
+        }
         resource::get::<Server>(&stack.config.server_id).await?
       }
       TerminalTarget::Deployment {

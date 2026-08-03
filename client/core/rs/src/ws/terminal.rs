@@ -76,6 +76,7 @@ impl KomodoClient {
         target: TerminalTarget::Stack {
           stack,
           service: Some(service),
+          task: None,
         },
         terminal,
         init,

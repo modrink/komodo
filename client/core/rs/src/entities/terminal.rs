@@ -65,6 +65,10 @@ pub enum TerminalTarget {
   Stack {
     stack: String,
     service: Option<String>,
+    /// When the Stack is deployed on Swarm: optional task id.
+    /// If omitted and exactly one RUNNING task exists for the service, Core picks it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    task: Option<String>,
   },
   Deployment {
     deployment: String,
@@ -90,9 +94,21 @@ impl TerminalTarget {
         TerminalTarget::Container { container, .. },
       ) => target == container,
       (
-        TerminalTarget::Stack { stack: target, .. },
-        TerminalTarget::Stack { stack, .. },
-      ) => target == stack,
+        TerminalTarget::Stack {
+          stack: target,
+          service: target_service,
+          task: target_task,
+        },
+        TerminalTarget::Stack {
+          stack,
+          service,
+          task,
+        },
+      ) => {
+        target == stack
+          && (target_service.is_none() || target_service == service)
+          && (target_task.is_none() || target_task == task)
+      }
       (
         TerminalTarget::Deployment { deployment: target },
         TerminalTarget::Deployment { deployment },

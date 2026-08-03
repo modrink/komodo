@@ -20,10 +20,18 @@ Container terminals are available on **Deployments**, **Stack services**, and an
 
 Open an exec shell into a **running Swarm task** container (same idea as Portainer's task console).
 
-- Open a Swarm **Task** page → **Terminals** tab (also available as an action icon on running tasks in task tables).
-- From a **Stack Service** (Swarm mode): **Terminals** tab lists that service's tasks — pick a running task (same deep-link). Stack-level **Terminals** stays compose-only and is hidden when the Stack is attached to a Swarm.
-- Requires the **`Terminal`** specific permission on the **Swarm** resource (Stack **Terminal** also shows the Stack Service picker).
-- The node hosting the task must be registered as a Komodo **Server** with Periphery. Komodo matches the Swarm node hostname to the Server name or the Server's system hostname.
+**Preferred (reuses Stack Terminals):** on a Swarm-attached **Stack** or **Stack Service**, open the existing **Terminals** tab → **New**. Flow matches compose Stacks, with an extra step when needed:
+
+1. Pick **service** (Stack page only)
+2. Pick **task** if multiple RUNNING replicas (skipped when only one)
+3. Pick **command** (`sh` / `bash` / …)
+
+Core resolves the task’s node → Komodo Server (hostname match) → `docker exec` on that Periphery. Terminals stay `TerminalTarget::Stack` so list/delete/reconnect keep working.
+
+**Also:** Swarm **Task** page → **Terminals** tab, and the terminal action icon on task tables (`TerminalTarget::SwarmTask`).
+
+- Requires **`Terminal`** on the **Stack** (Stack Terminals path) or on the **Swarm** (Task page path).
+- The node hosting the task must be a Komodo **Server** with Periphery.
 - If no matching Server is found, terminal creation fails with a clear error — add the worker as a Server first.
 
 ## Multiple Sessions

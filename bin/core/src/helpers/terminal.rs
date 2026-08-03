@@ -45,10 +45,15 @@ pub async fn setup_target_for_user(
       )
       .await
     }
-    TerminalTarget::Stack { stack, service } => {
+    TerminalTarget::Stack {
+      stack,
+      service,
+      task,
+    } => {
       setup_stack_service_target_for_user(
         stack,
         service.context("Missing 'target.params.service'")?,
+        task,
         terminal,
         init,
         user,
@@ -160,13 +165,19 @@ async fn setup_container_target_for_user(
 async fn setup_stack_service_target_for_user(
   stack: String,
   service: String,
+  task: Option<String>,
   terminal: Option<String>,
   init: Option<InitTerminal>,
   user: &User,
 ) -> anyhow::Result<(TerminalTarget, String, PeripheryClient)> {
   let (target, periphery, container) =
-    get_stack_service_periphery_container(&stack, &service, user)
-      .await?;
+    get_stack_service_periphery_container(
+      &stack,
+      &service,
+      task.as_deref(),
+      user,
+    )
+    .await?;
 
   let terminal = default_container_terminal_name(
     terminal,
@@ -318,6 +329,7 @@ pub async fn create_container_terminal_inner(
 pub async fn get_stack_service_periphery_container(
   stack: &str,
   service: &str,
+  task: Option<&str>,
   user: &User,
 ) -> anyhow::Result<(TerminalTarget, PeripheryClient, String)> {
   let stack = get_check_permissions::<Stack>(
@@ -326,6 +338,13 @@ pub async fn get_stack_service_periphery_container(
     PermissionLevel::Read.terminal(),
   )
   .await?;
+
+  if !stack.config.swarm_id.is_empty() {
+    return get_stack_swarm_service_periphery_container(
+      &stack, service, task, user,
+    )
+    .await;
+  }
 
   let server =
     resource::get::<Server>(&stack.config.server_id).await?;
@@ -356,6 +375,94 @@ pub async fn get_stack_service_periphery_container(
     TerminalTarget::Stack {
       stack: stack.id,
       service: Some(service.to_string()),
+      task: None,
+    },
+    periphery,
+    container,
+  ))
+}
+
+/// Swarm-mode Stack service → same Periphery exec as SwarmTask, but keep
+/// `TerminalTarget::Stack` so existing Stack Terminals UI/list flows work.
+async fn get_stack_swarm_service_periphery_container(
+  stack: &Stack,
+  service: &str,
+  task: Option<&str>,
+  _user: &User,
+) -> anyhow::Result<(TerminalTarget, PeripheryClient, String)> {
+  // Stack Terminal permission already checked by caller. Do not also
+  // require Swarm Terminal — this is the Stack Terminals adapt path.
+  let swarm = resource::get::<Swarm>(&stack.config.swarm_id).await?;
+
+  let Some(status) = stack_status_cache().get(&stack.id).await else {
+    return Err(anyhow!("Could not get Stack status"));
+  };
+
+  let swarm_service_id = status
+    .curr
+    .services
+    .iter()
+    .find(|s| s.service.as_str() == service)
+    .and_then(|s| s.swarm_service.as_ref())
+    .and_then(|s| s.id.clone())
+    .with_context(|| {
+      format!(
+        "Did not find Swarm service for Stack service '{service}'"
+      )
+    })?;
+
+  let cache =
+    swarm_status_cache().get_or_insert_default(&swarm.id).await;
+  let tasks = cache
+    .lists
+    .as_ref()
+    .map(|l| l.tasks.as_slice())
+    .unwrap_or(&[]);
+
+  let mut running: Vec<_> = tasks
+    .iter()
+    .filter(|t| {
+      t.service_id.as_deref() == Some(swarm_service_id.as_str())
+        && t.state
+          == Some(
+            komodo_client::entities::docker::task::TaskState::RUNNING,
+          )
+        && t.container_id.as_ref().is_some_and(|c| !c.is_empty())
+        && t.id.as_ref().is_some_and(|id| !id.is_empty())
+    })
+    .collect();
+
+  // Prefer most recently updated task when auto-picking.
+  running.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+
+  let task_id = match task {
+    Some(t) => t.to_string(),
+    None if running.len() == 1 => {
+      running[0].id.clone().context("Swarm task missing id")?
+    }
+    None if running.is_empty() => {
+      return Err(anyhow!(
+        "No RUNNING Swarm tasks with a container for Stack service '{service}'. Start a replica first."
+      ));
+    }
+    None => {
+      let ids: Vec<_> =
+        running.iter().filter_map(|t| t.id.as_deref()).collect();
+      return Err(anyhow!(
+        "Multiple RUNNING tasks for Stack service '{service}' — pick one via target.params.task. Candidates: {}",
+        ids.join(", ")
+      ));
+    }
+  };
+
+  let (_, periphery, container) =
+    resolve_swarm_task_periphery(&swarm, &task_id, true).await?;
+
+  Ok((
+    TerminalTarget::Stack {
+      stack: stack.id.clone(),
+      service: Some(service.to_string()),
+      task: Some(task_id),
     },
     periphery,
     container,
@@ -406,7 +513,14 @@ pub async fn get_swarm_task_periphery_container(
     PermissionLevel::Read.terminal(),
   )
   .await?;
+  resolve_swarm_task_periphery(&swarm, task, require_running).await
+}
 
+async fn resolve_swarm_task_periphery(
+  swarm: &Swarm,
+  task: &str,
+  require_running: bool,
+) -> anyhow::Result<(TerminalTarget, PeripheryClient, String)> {
   let inspected = swarm_request(
     &swarm.config.server_ids,
     periphery_client::api::swarm::InspectSwarmTask {
@@ -482,7 +596,7 @@ pub async fn get_swarm_task_periphery_container(
 
   Ok((
     TerminalTarget::SwarmTask {
-      swarm: swarm.id,
+      swarm: swarm.id.clone(),
       task: task_id,
     },
     periphery,

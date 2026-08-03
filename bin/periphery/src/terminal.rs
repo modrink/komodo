@@ -166,12 +166,18 @@ pub async fn list_terminals(
           TerminalTarget::Stack {
             stack: target_stack,
             service: target_service,
+            task: target_task,
           },
-          TerminalTarget::Stack { stack, service },
+          TerminalTarget::Stack {
+            stack,
+            service,
+            task,
+          },
         ) => {
           target_stack == stack
             // If no service passed, only match on stack
             && (target_service.is_none() || target_service == service)
+            && (target_task.is_none() || target_task == task)
         }
         (
           TerminalTarget::Deployment {

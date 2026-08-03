@@ -1,6 +1,6 @@
 import LogSection from "@/components/log-section";
 import TerminalSection from "@/components/terminal/section";
-import { usePermissions } from "@/lib/hooks";
+import { usePermissions, useRead } from "@/lib/hooks";
 import { useServer } from "@/resources/server";
 import { ICONS } from "@/lib/icons";
 import {
@@ -40,17 +40,42 @@ export default function StackServiceTabs({
     type: "Stack",
     id: stack.id,
   });
-  const swarmId = stack.info.swarm_id;
-  const { specificTerminal: swarmTerminal } = usePermissions({
-    type: "Swarm",
-    id: swarmId,
-  });
 
   const down = !swarmService && !container;
-  const isSwarm = !!swarmService && !!swarmId;
+  const isSwarm = !!swarmService && !!stack.info.swarm_id;
 
   const containerTerminalsDisabled =
     useServer(stack.info.server_id)?.info.container_terminals_disabled ?? false;
+
+  const swarmTasks = useRead(
+    "ListSwarmTasks",
+    { swarm: stack.info.swarm_id },
+    { enabled: isSwarm, refetchInterval: 10_000 },
+  ).data;
+
+  const runningTasks = useMemo(() => {
+    if (!isSwarm || !swarmService?.ID) return [];
+    return (swarmTasks ?? [])
+      .filter(
+        (t) =>
+          t.ServiceID === swarmService.ID &&
+          t.State === Types.TaskState.RUNNING &&
+          !!t.ContainerID &&
+          !!t.ID,
+      )
+      .sort((a, b) =>
+        (b.UpdatedAt ?? "").localeCompare(a.UpdatedAt ?? ""),
+      );
+  }, [isSwarm, swarmService?.ID, swarmTasks]);
+
+  const taskOptions = useMemo(
+    () =>
+      runningTasks.map((t) => ({
+        id: t.ID!,
+        label: `${t.ID!.slice(0, 12)}${t.NodeID ? ` @ ${t.NodeID.slice(0, 8)}` : ""}`,
+      })),
+    [runningTasks],
+  );
 
   const logDisabled = !specificLogs || down;
   const inspectDisabled = !specificInspect || down;
@@ -60,13 +85,14 @@ export default function StackServiceTabs({
     containerTerminalsDisabled ||
     container?.state !== Types.ContainerStateStatusEnum.Running;
 
-  // Swarm: Terminals tab = task picker → Swarm Task terminals (not Stack resolve)
-  const swarmTerminalDisabled = !specificTerminal && !swarmTerminal;
+  const swarmTerminalDisabled =
+    !specificTerminal || runningTasks.length === 0;
+
   const terminalDisabled = isSwarm
     ? swarmTerminalDisabled
     : composeTerminalDisabled;
   const terminalHidden = isSwarm
-    ? swarmTerminalDisabled
+    ? !specificTerminal
     : !container || !specificTerminal;
 
   const view =
@@ -123,9 +149,12 @@ export default function StackServiceTabs({
       params: {
         stack: stack.id,
         service,
+        ...(taskOptions.length === 1
+          ? { task: taskOptions[0].id }
+          : {}),
       },
     }),
-    [stack.id, service],
+    [stack.id, service, taskOptions],
   );
 
   const _search = useState("");
@@ -135,7 +164,7 @@ export default function StackServiceTabs({
     case "Tasks":
       View = (
         <SwarmServiceTasksSection
-          id={swarmId}
+          id={stack.info.swarm_id}
           serviceId={swarmService?.ID}
           titleOther={Selector}
           _search={_search}
@@ -162,16 +191,12 @@ export default function StackServiceTabs({
       );
       break;
     case "Terminals":
-      View = isSwarm ? (
-        <SwarmServiceTasksSection
-          id={swarmId}
-          serviceId={swarmService?.ID}
+      View = (
+        <TerminalSection
+          target={target}
           titleOther={Selector}
-          _search={_search}
-          hint="Pick a running task — Actions → Terminal (opens Swarm Task terminals)."
+          tasks={isSwarm ? taskOptions : undefined}
         />
-      ) : (
-        <TerminalSection target={target} titleOther={Selector} />
       );
       break;
   }
