@@ -1,9 +1,9 @@
 ## All in one, multi stage compile + runtime Docker build for your architecture.
 ## cargo-chef: deps layer cached when Cargo.lock unchanged.
+## chef image pinned by digest (avoid floating-tag cook busts).
 
-# Shared chef toolchain (matches previous rust:1.97.1-trixie)
-FROM docker.io/lukemathwalker/cargo-chef:latest-rust-1.97.1-trixie AS chef
-RUN cargo install cargo-strip --locked
+FROM docker.io/lukemathwalker/cargo-chef@sha256:7341ca3ca2726f3249fb227b510ce195fb80d6e584ff8894b68ffa97f1512e62 AS chef
+# system strip (binutils) — skip cargo-strip install (~20s cold)
 WORKDIR /builder
 
 FROM chef AS planner
@@ -30,10 +30,10 @@ COPY ./bin/cli ./bin/cli
 COPY ./xtask ./xtask
 RUN cargo build -p komodo_core --release && \
   cargo build -p komodo_cli --release && \
-  cargo strip
+  strip target/release/core target/release/km
 
 # Build UI — yarn deps layer cached when lockfiles unchanged
-FROM node:22.12-alpine AS ui-builder
+FROM docker.io/library/node:22.12-alpine AS ui-builder
 WORKDIR /builder
 COPY ./client/core/ts/package.json ./client/core/ts/yarn.lock ./client/
 COPY ./ui/package.json ./ui/yarn.lock ./ui/
@@ -45,7 +45,7 @@ RUN cd client && yarn build
 RUN cd ui && yarn build
 
 # Final Image
-FROM debian:trixie-slim
+FROM docker.io/library/debian:trixie-slim
 
 COPY ./bin/core/starship.toml /starship.toml
 COPY ./bin/core/debian-deps.sh .
@@ -59,7 +59,7 @@ COPY ./config/core.config.toml /config/.default.config.toml
 COPY --from=ui-builder /builder/ui/dist /app/ui
 COPY --from=core-builder /builder/target/release/core /usr/local/bin/core
 COPY --from=core-builder /builder/target/release/km /usr/local/bin/km
-COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
+COPY --from=docker.io/denoland/deno:bin /deno /usr/local/bin/deno
 
 # Set $DENO_DIR and preload external Deno deps
 ENV DENO_DIR=/action-cache/deno
