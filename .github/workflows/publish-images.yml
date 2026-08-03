@@ -58,8 +58,7 @@ jobs:
     if: github.repository == 'modrink/komodo'
     runs-on: ubuntu-latest
     outputs:
-      core: ${{ steps.set.outputs.core }}
-      periphery: ${{ steps.set.outputs.periphery }}
+      matrix: ${{ steps.set.outputs.matrix }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -97,22 +96,31 @@ jobs:
               - 'bin/core/aio.Dockerfile'
               - 'bin/periphery/aio.Dockerfile'
 
-      - name: Set matrix flags
+      - name: Build matrix JSON
         id: set
         run: |
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "core=true" >> "$GITHUB_OUTPUT"
-            echo "periphery=true" >> "$GITHUB_OUTPUT"
-            exit 0
+          core=true
+          periphery=true
+          if [ "${{ github.event_name }}" = "pull_request" ] && \
+             [ "${{ steps.filter.outputs.workflow }}" != "true" ]; then
+            core="${{ steps.filter.outputs.core }}"
+            periphery="${{ steps.filter.outputs.periphery }}"
           fi
-          # Workflow/Dockerfile change → build both
-          if [ "${{ steps.filter.outputs.workflow }}" = "true" ]; then
-            echo "core=true" >> "$GITHUB_OUTPUT"
-            echo "periphery=true" >> "$GITHUB_OUTPUT"
-            exit 0
+          # Always build at least one component (workflow-only PRs already force both)
+          if [ "$core" != "true" ] && [ "$periphery" != "true" ]; then
+            core=true
+            periphery=true
           fi
-          echo "core=${{ steps.filter.outputs.core }}" >> "$GITHUB_OUTPUT"
-          echo "periphery=${{ steps.filter.outputs.periphery }}" >> "$GITHUB_OUTPUT"
+          parts=()
+          if [ "$core" = "true" ]; then
+            parts+=('{"component":"core","dockerfile":"bin/core/aio.Dockerfile","image":"ghcr.io/modrink/komodo-core"}')
+          fi
+          if [ "$periphery" = "true" ]; then
+            parts+=('{"component":"periphery","dockerfile":"bin/periphery/aio.Dockerfile","image":"ghcr.io/modrink/komodo-periphery"}')
+          fi
+          json=$(printf '%s\n' "${parts[@]}" | paste -sd, -)
+          echo "matrix={\"include\":[${json}]}" >> "$GITHUB_OUTPUT"
+          echo "matrix={\"include\":[${json}]}"
 
   ci-gate:
     name: Cargo gate
@@ -150,13 +158,7 @@ jobs:
 
   build-and-push:
     name: build (${{ matrix.component }})
-    if: |
-      github.repository == 'modrink/komodo' &&
-      needs.changes.result == 'success' &&
-      (
-        (matrix.component == 'core' && needs.changes.outputs.core == 'true') ||
-        (matrix.component == 'periphery' && needs.changes.outputs.periphery == 'true')
-      )
+    if: github.repository == 'modrink/komodo' && needs.changes.result == 'success'
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -168,14 +170,7 @@ jobs:
       packages: write
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - component: core
-            dockerfile: bin/core/aio.Dockerfile
-            image: ghcr.io/modrink/komodo-core
-          - component: periphery
-            dockerfile: bin/periphery/aio.Dockerfile
-            image: ghcr.io/modrink/komodo-periphery
+      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
