@@ -1,17 +1,28 @@
 ## All in one, multi stage compile + runtime Docker build for your architecture.
+## cargo-chef: deps layer cached when Cargo.lock unchanged.
 
-FROM rust:1.97.1-trixie AS builder
-RUN cargo install cargo-strip
-
+FROM docker.io/lukemathwalker/cargo-chef:latest-rust-1.97.1-trixie AS chef
+RUN cargo install cargo-strip --locked
 WORKDIR /builder
+
+FROM chef AS planner
 COPY Cargo.toml Cargo.lock ./
 COPY ./lib ./lib
 COPY ./client/core/rs ./client/core/rs
 COPY ./client/periphery ./client/periphery
 COPY ./bin/periphery ./bin/periphery
 COPY ./xtask ./xtask
+RUN cargo chef prepare --recipe-path recipe.json
 
-# Compile app
+FROM chef AS builder
+COPY --from=planner /builder/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json --package komodo_periphery
+COPY Cargo.toml Cargo.lock ./
+COPY ./lib ./lib
+COPY ./client/core/rs ./client/core/rs
+COPY ./client/periphery ./client/periphery
+COPY ./bin/periphery ./bin/periphery
+COPY ./xtask ./xtask
 RUN cargo build -p komodo_periphery --release && cargo strip
 
 # Final Image
