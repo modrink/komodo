@@ -1,8 +1,8 @@
 ## All in one, multi stage compile + runtime Docker build for your architecture.
 ## cargo-chef: deps layer cached when Cargo.lock unchanged.
+## chef image pinned by digest (avoid floating-tag cook busts).
 
-FROM docker.io/lukemathwalker/cargo-chef:latest-rust-1.97.1-trixie AS chef
-RUN cargo install cargo-strip --locked
+FROM docker.io/lukemathwalker/cargo-chef@sha256:7341ca3ca2726f3249fb227b510ce195fb80d6e584ff8894b68ffa97f1512e62 AS chef
 WORKDIR /builder
 
 FROM chef AS planner
@@ -23,10 +23,10 @@ COPY ./client/core/rs ./client/core/rs
 COPY ./client/periphery ./client/periphery
 COPY ./bin/periphery ./bin/periphery
 COPY ./xtask ./xtask
-RUN cargo build -p komodo_periphery --release && cargo strip
+RUN cargo build -p komodo_periphery --release && strip target/release/periphery
 
 # Final Image
-FROM debian:trixie-slim
+FROM docker.io/library/debian:trixie-slim
 
 COPY ./bin/periphery/starship.toml /starship.toml
 COPY ./bin/periphery/debian-deps.sh .

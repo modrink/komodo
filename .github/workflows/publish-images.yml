@@ -2,11 +2,12 @@
 # Publishes komodo-core + komodo-periphery to ghcr.io/modrink.
 #
 # Perf:
-# - Tag pushes: skip Cargo gate (trust main CI); wall ≈ Docker only.
-# - PRs/dispatch: gate with rust-cache; fmt + test only (no redundant build).
+# - Tag pushes: skip Cargo gate; wall ≈ Docker only.
+# - PRs/dispatch: gate with rust-cache; fmt + test only.
 # - Gate ∥ Docker when both run.
-# - Path filter: skip unchanged component on PRs (tags always both).
-# - Dockerfiles: cargo-chef + yarn lockfile layer cache.
+# - Path filter: skip unchanged component on PRs.
+# - Docker: cargo-chef, yarn layers, pinned chef digest, system strip.
+# - Cache: registry-only write (v3); GHA+registry read. No provenance/SBOM.
 
 name: Publish images (fork)
 
@@ -60,10 +61,11 @@ jobs:
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
     steps:
+      # Checkout only needed for path-filter on PRs
       - uses: actions/checkout@v7
+        if: github.event_name == 'pull_request'
         with:
           fetch-depth: 0
-          ref: ${{ env.CHECKOUT_REF }}
 
       - uses: dorny/paths-filter@v3
         id: filter
@@ -82,6 +84,7 @@ jobs:
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'config/core.config.toml'
+              - '.dockerignore'
             periphery:
               - 'bin/periphery/**'
               - 'bin/entrypoint.sh'
@@ -91,10 +94,12 @@ jobs:
               - 'xtask/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
+              - '.dockerignore'
             workflow:
               - '.github/workflows/publish-images.yml'
               - 'bin/core/aio.Dockerfile'
               - 'bin/periphery/aio.Dockerfile'
+              - '.dockerignore'
 
       - name: Build matrix JSON
         id: set
@@ -106,7 +111,6 @@ jobs:
             core="${{ steps.filter.outputs.core }}"
             periphery="${{ steps.filter.outputs.periphery }}"
           fi
-          # Always build at least one component (workflow-only PRs already force both)
           if [ "$core" != "true" ] && [ "$periphery" != "true" ]; then
             core=true
             periphery=true
@@ -120,11 +124,9 @@ jobs:
           fi
           json=$(printf '%s\n' "${parts[@]}" | paste -sd, -)
           echo "matrix={\"include\":[${json}]}" >> "$GITHUB_OUTPUT"
-          echo "matrix={\"include\":[${json}]}"
 
   ci-gate:
     name: Cargo gate
-    # Skip on tag pushes (main CI already covered the commit). Optional skip on dispatch.
     if: |
       github.repository == 'modrink/komodo' &&
       github.event_name != 'push' &&
@@ -175,7 +177,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           ref: ${{ env.CHECKOUT_REF }}
 
       - name: Set up Docker Buildx
@@ -199,7 +201,6 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          context: git
           images: ${{ matrix.image }}
           tags: |
             type=semver,pattern={{version}},value=${{ env.SEMVER_SOURCE }},enable=${{ startsWith(env.SEMVER_SOURCE, 'v') }}
@@ -223,14 +224,15 @@ jobs:
           push: ${{ env.PUSH_IMAGE }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          sbom: false
+          # Read: GHA (fast) + registry (durable). Write: registry only (avoid dual fat export).
           cache-from: |
+            type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.component }}-v3
             type=gha,scope=komodo-${{ matrix.component }}-v2
             type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.component }}-v2
-            type=gha,scope=komodo-${{ matrix.component }}
-            type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.component }}
           cache-to: |
-            type=gha,mode=max,scope=komodo-${{ matrix.component }}-v2
-            type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.component }}-v2,mode=max,ignore-error=true
+            type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.component }}-v3,mode=max,ignore-error=true
 
   publish-ok:
     name: Publish OK
