@@ -5606,6 +5606,14 @@ export type ServerListItem = ResourceListItem<ServerListItemInfo>;
 export type ListServersResponse = ServerListItem[];
 
 export type ListStackServicesResponse = StackService[];
+export type ListStackTerminalTasksResponse = StackTerminalTask[];
+
+export interface StackTerminalTask {
+	id: string;
+	service: string;
+	node_id?: string;
+	updated_at?: string;
+}
 
 export enum StackState {
 	/** The stack is currently re/deploying */
@@ -9949,6 +9957,14 @@ export interface ListStackServices {
 	stack: string;
 }
 
+/** RUNNING Swarm tasks for a Stack service (Terminals picker). Requires Stack Read. */
+export interface ListStackTerminalTasks {
+	/** Id or name */
+	stack: string;
+	/** Optional compose service name filter. */
+	service?: string;
+}
+
 export enum StackSortBy {
 	/** Sort by name. Default. */
 	Name = "Name",
@@ -12047,6 +12063,7 @@ export type ReadRequest =
 	| { type: "ListStacks", params: ListStacks }
 	| { type: "ListFullStacks", params: ListFullStacks }
 	| { type: "ListStackServices", params: ListStackServices }
+	| { type: "ListStackTerminalTasks", params: ListStackTerminalTasks }
 	| { type: "ListAllStackServices", params: ListAllStackServices }
 	| { type: "ListCommonStackExtraArgs", params: ListCommonStackExtraArgs }
 	| { type: "ListCommonStackBuildExtraArgs", params: ListCommonStackBuildExtraArgs }

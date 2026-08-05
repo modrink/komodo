@@ -181,6 +181,52 @@ pub type ListStackServicesResponse = Vec<StackService>;
 #[cfg(feature = "utoipa")]
 #[utoipa::path(
   post,
+  path = "/ListStackTerminalTasks",
+  description = "List RUNNING Swarm tasks for Stack Terminals picker.",
+  request_body(content = ListStackTerminalTasks),
+  responses(
+    (status = 200, description = "RUNNING tasks", body = ListStackTerminalTasksResponse),
+  ),
+)]
+pub fn list_stack_terminal_tasks() {}
+
+/// RUNNING Swarm tasks for a Stack service (Terminals picker).
+/// Requires Stack Read — does not require Swarm Read/Terminal.
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug, Clone, Resolve)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+#[empty_traits(KomodoReadRequest)]
+#[response(ListStackTerminalTasksResponse)]
+#[error(mogh_error::Error)]
+pub struct ListStackTerminalTasks {
+  /// Id or name
+  #[serde(alias = "id", alias = "name")]
+  pub stack: String,
+  /// Optional compose service name filter.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub service: Option<String>,
+}
+
+#[typeshare]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "utoipa", derive(utoipa::ToSchema))]
+pub struct StackTerminalTask {
+  pub id: String,
+  pub service: String,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub node_id: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub updated_at: Option<String>,
+}
+
+#[typeshare]
+pub type ListStackTerminalTasksResponse = Vec<StackTerminalTask>;
+
+//
+
+#[cfg(feature = "utoipa")]
+#[utoipa::path(
+  post,
   path = "/ListAllStackServices",
   description = "List all stack services on the target servers / stacks.",
   request_body(content = ListAllStackServices),

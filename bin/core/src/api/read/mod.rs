@@ -170,6 +170,7 @@ enum ReadRequest {
   ListStacks(ListStacks),
   ListFullStacks(ListFullStacks),
   ListStackServices(ListStackServices),
+  ListStackTerminalTasks(ListStackTerminalTasks),
   ListAllStackServices(ListAllStackServices),
   ListCommonStackExtraArgs(ListCommonStackExtraArgs),
   ListCommonStackBuildExtraArgs(ListCommonStackBuildExtraArgs),

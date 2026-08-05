@@ -259,6 +259,7 @@ function onUpdate(
         ["SearchStackLog", { stack: update.target.id }],
         ["GetStack"],
         ["ListStackServices"],
+        ["ListStackTerminalTasks"],
         ["GetResourceMatchingContainer"],
       );
     }

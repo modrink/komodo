@@ -436,7 +436,14 @@ async fn get_stack_swarm_service_periphery_container(
   running.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
 
   let task_id = match task {
-    Some(t) => t.to_string(),
+    Some(t) => {
+      if !running.iter().any(|r| r.id.as_deref() == Some(t)) {
+        return Err(anyhow!(
+          "Swarm task '{t}' is not a RUNNING task for Stack service '{service}'"
+        ));
+      }
+      t.to_string()
+    }
     None if running.len() == 1 => {
       running[0].id.clone().context("Swarm task missing id")?
     }
@@ -516,7 +523,18 @@ pub async fn get_swarm_task_periphery_container(
   resolve_swarm_task_periphery(&swarm, task, require_running).await
 }
 
-async fn resolve_swarm_task_periphery(
+/// Resolve a Swarm task to worker Periphery without Swarm Terminal permission.
+/// Used by Stack Terminals list/delete (Stack Terminal already checked).
+pub async fn resolve_swarm_task_periphery_for_stack(
+  swarm_id: &str,
+  task: &str,
+  require_running: bool,
+) -> anyhow::Result<(TerminalTarget, PeripheryClient, String)> {
+  let swarm = resource::get::<Swarm>(swarm_id).await?;
+  resolve_swarm_task_periphery(&swarm, task, require_running).await
+}
+
+pub async fn resolve_swarm_task_periphery(
   swarm: &Swarm,
   task: &str,
   require_running: bool,
@@ -675,4 +693,147 @@ async fn find_server_for_swarm_node_identities(
   .ok_or_else(|| {
     swarm_terminal::no_server_match_error(node_candidates)
   })
+}
+
+/// RUNNING Swarm tasks for a Stack (for Terminals picker). No Swarm Read required.
+pub async fn list_running_stack_terminal_tasks(
+  stack: &Stack,
+  service_filter: Option<&str>,
+) -> anyhow::Result<Vec<StackTerminalTaskOption>> {
+  if stack.config.swarm_id.is_empty() {
+    return Ok(vec![]);
+  }
+
+  let Some(status) = stack_status_cache().get(&stack.id).await else {
+    return Ok(vec![]);
+  };
+
+  let mut service_by_swarm_id = std::collections::HashMap::new();
+  for svc in &status.curr.services {
+    if let Some(want) = service_filter {
+      if svc.service.as_str() != want {
+        continue;
+      }
+    }
+    if let Some(id) =
+      svc.swarm_service.as_ref().and_then(|s| s.id.clone())
+    {
+      service_by_swarm_id.insert(id, svc.service.clone());
+    }
+  }
+  if service_by_swarm_id.is_empty() {
+    return Ok(vec![]);
+  }
+
+  let cache = swarm_status_cache()
+    .get_or_insert_default(&stack.config.swarm_id)
+    .await;
+  let tasks = cache
+    .lists
+    .as_ref()
+    .map(|l| l.tasks.as_slice())
+    .unwrap_or(&[]);
+
+  let mut out: Vec<_> = tasks
+    .iter()
+    .filter_map(|t| {
+      let sid = t.service_id.as_ref()?;
+      let service = service_by_swarm_id.get(sid)?.clone();
+      if t.state
+        != Some(
+          komodo_client::entities::docker::task::TaskState::RUNNING,
+        )
+      {
+        return None;
+      }
+      let id = t.id.clone().filter(|id| !id.is_empty())?;
+      if t.container_id.as_ref().is_none_or(|c| c.is_empty()) {
+        return None;
+      }
+      Some(StackTerminalTaskOption {
+        id,
+        service,
+        node_id: t.node_id.clone(),
+        updated_at: t.updated_at.clone(),
+      })
+    })
+    .collect();
+
+  out.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+  Ok(out)
+}
+
+/// Worker Servers hosting tasks for a Swarm Stack (global ListTerminals).
+pub async fn worker_servers_for_swarm_stack(
+  stack: &Stack,
+) -> anyhow::Result<Vec<Server>> {
+  if stack.config.swarm_id.is_empty() {
+    return Ok(vec![]);
+  }
+
+  let swarm = resource::get::<Swarm>(&stack.config.swarm_id).await?;
+  let cache =
+    swarm_status_cache().get_or_insert_default(&swarm.id).await;
+  let tasks = cache
+    .lists
+    .as_ref()
+    .map(|l| l.tasks.as_slice())
+    .unwrap_or(&[]);
+
+  let mut swarm_service_ids = std::collections::HashSet::new();
+  if let Some(st) = stack_status_cache().get(&stack.id).await {
+    for svc in &st.curr.services {
+      if let Some(id) =
+        svc.swarm_service.as_ref().and_then(|s| s.id.clone())
+      {
+        swarm_service_ids.insert(id);
+      }
+    }
+  }
+
+  let mut seen_nodes = std::collections::HashSet::new();
+  let mut servers = Vec::new();
+
+  for t in tasks {
+    let Some(sid) = t.service_id.as_deref() else {
+      continue;
+    };
+    if !swarm_service_ids.is_empty()
+      && !swarm_service_ids.contains(sid)
+    {
+      continue;
+    }
+    let Some(node_id) = t.node_id.as_deref() else {
+      continue;
+    };
+    if !seen_nodes.insert(node_id.to_string()) {
+      continue;
+    }
+    let Ok(cands) = resolve_swarm_node_identity_candidates(
+      &swarm.id,
+      &swarm.config.server_ids,
+      node_id,
+    )
+    .await
+    else {
+      continue;
+    };
+    if let Ok(server) =
+      find_server_for_swarm_node_identities(&cands).await
+    {
+      if !servers.iter().any(|s: &Server| s.id == server.id) {
+        servers.push(server);
+      }
+    }
+  }
+
+  Ok(servers)
+}
+
+#[derive(Debug, Clone)]
+pub struct StackTerminalTaskOption {
+  pub id: String,
+  pub service: String,
+  pub node_id: Option<String>,
+  pub updated_at: Option<String>,
 }

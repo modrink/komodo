@@ -30,7 +30,7 @@ Core resolves the task’s node → Komodo Server (hostname match) → `docker e
 
 **Also:** Swarm **Task** page → **Terminals** tab, and the terminal action icon on task tables (`TerminalTarget::SwarmTask`).
 
-- Requires **`Terminal`** on the **Stack** (Stack Terminals path) or on the **Swarm** (Task page path).
+- Requires **`Terminal`** on the **Stack** (Stack Terminals path — create/list/delete/reconnect; picker uses Stack **Read** via `ListStackTerminalTasks`) or on the **Swarm** (Task page path).
 - The node hosting the task must be a Komodo **Server** with Periphery.
 - If no matching Server is found, terminal creation fails with a clear error — add the worker as a Server first.
 

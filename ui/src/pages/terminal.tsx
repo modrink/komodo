@@ -11,7 +11,7 @@ import { Page } from "mogh_ui";
 import { Group, Text } from "@mantine/core";
 import { Types } from "komodo_client";
 import { ReactNode, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import ResourceLink from "@/resources/link";
 import DeleteTerminal from "./terminals/delete";
 
@@ -155,12 +155,18 @@ function StackServiceTerminalPage({
 }) {
   const stack = useStack(id);
   useSetTitle(`${stack?.name} | ${service} Terminal | ${terminal}`);
+  const [searchParams] = useSearchParams();
+  const task = searchParams.get("task") ?? undefined;
   const target: Types.TerminalTarget = useMemo(
     () => ({
       type: "Stack",
-      params: { stack: id, service },
+      params: {
+        stack: id,
+        service,
+        ...(task ? { task } : {}),
+      },
     }),
-    [id, service],
+    [id, service, task],
   );
   return (
     <TerminalLayout

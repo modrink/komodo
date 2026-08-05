@@ -13,7 +13,7 @@ import StackInfo from "./info";
 import StackServices from "./services";
 import StackLog from "./log";
 import TerminalSection from "@/components/terminal/section";
-import { TerminalTaskOption } from "@/components/terminal/new";
+import { useRunningSwarmTaskOptions } from "@/components/terminal/use-running-swarm-tasks";
 
 type StackTabsView = "Config" | "Info" | "Services" | "Log" | "Terminals";
 
@@ -31,35 +31,10 @@ export default function StackTabs({ id }: { id: string }) {
   const services = useRead("ListStackServices", { stack: id }).data;
   const swarmStack = !!info?.swarm_id;
 
-  const swarmTasks = useRead(
-    "ListSwarmTasks",
-    { swarm: info?.swarm_id ?? "" },
-    { enabled: swarmStack, refetchInterval: 10_000 },
-  ).data;
-
-  const swarmTaskOptions: TerminalTaskOption[] = useMemo(() => {
-    if (!swarmStack || !services) return [];
-    const bySwarmServiceId = new Map(
-      services
-        .filter((s) => s.swarm_service?.ID)
-        .map((s) => [s.swarm_service!.ID!, s.service] as const),
-    );
-    return (swarmTasks ?? [])
-      .filter(
-        (t) =>
-          t.State === Types.TaskState.RUNNING &&
-          !!t.ContainerID &&
-          !!t.ID &&
-          !!t.ServiceID &&
-          bySwarmServiceId.has(t.ServiceID),
-      )
-      .sort((a, b) => (b.UpdatedAt ?? "").localeCompare(a.UpdatedAt ?? ""))
-      .map((t) => ({
-        id: t.ID!,
-        service: bySwarmServiceId.get(t.ServiceID!)!,
-        label: `${bySwarmServiceId.get(t.ServiceID!)} · ${t.ID!.slice(0, 12)}`,
-      }));
-  }, [swarmStack, services, swarmTasks]);
+  const swarmTaskOptions = useRunningSwarmTaskOptions({
+    stackId: id,
+    enabled: swarmStack,
+  });
 
   const containerTerminalsDisabled =
     useServer(info?.server_id)?.info.container_terminals_disabled ?? false;

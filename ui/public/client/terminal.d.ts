@@ -35,9 +35,10 @@ export declare const terminal_methods: (url: string, state: ClientState) => {
         command: string;
         init?: InitTerminal;
     }, callbacks?: ExecuteCallbacks) => Promise<void>;
-    execute_stack_service_terminal: ({ stack, service, terminal, command, init, }: {
+    execute_stack_service_terminal: ({ stack, service, task, terminal, command, init, }: {
         stack: string;
         service: string;
+        task?: string;
         terminal?: string;
         command: string;
         init?: InitTerminal;
