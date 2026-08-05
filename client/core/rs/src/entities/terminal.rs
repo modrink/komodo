@@ -94,20 +94,23 @@ impl TerminalTarget {
         TerminalTarget::Container { container, .. },
       ) => target == container,
       (
+        // `self` is the stored terminal; `other` is the query/filter.
+        // Query-side None = wildcard (same as periphery list_terminals).
         TerminalTarget::Stack {
-          stack: target,
-          service: target_service,
-          task: target_task,
+          stack: stored_stack,
+          service: stored_service,
+          task: stored_task,
         },
         TerminalTarget::Stack {
-          stack,
-          service,
-          task,
+          stack: query_stack,
+          service: query_service,
+          task: query_task,
         },
       ) => {
-        target == stack
-          && (target_service.is_none() || target_service == service)
-          && (target_task.is_none() || target_task == task)
+        stored_stack == query_stack
+          && (query_service.is_none()
+            || query_service == stored_service)
+          && (query_task.is_none() || query_task == stored_task)
       }
       (
         TerminalTarget::Deployment { deployment: target },

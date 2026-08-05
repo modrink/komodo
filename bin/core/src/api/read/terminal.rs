@@ -214,6 +214,21 @@ async fn list_all_terminals_for_user(
         resource::get::<Server>(&stack.config.server_id).await?;
       servers.push((server, false));
     }
+    // Swarm stacks often have empty server_id; terminals live on worker nodes.
+    if !stack.config.swarm_id.is_empty() {
+      if let Ok(workers) =
+        crate::helpers::terminal::worker_servers_for_swarm_stack(
+          stack,
+        )
+        .await
+      {
+        for server in workers {
+          if !servers.iter().any(|(s, _)| s.id == server.id) {
+            servers.push((server, false));
+          }
+        }
+      }
+    }
   }
   for deployment in &deployments {
     if !deployment.config.server_id.is_empty()
@@ -369,7 +384,7 @@ async fn list_stack_terminals(
   task: Option<&str>,
   user: &User,
 ) -> mogh_error::Result<Vec<Terminal>> {
-  use crate::helpers::terminal::get_swarm_task_periphery_container;
+  use crate::helpers::terminal::resolve_swarm_task_periphery_for_stack;
   use crate::state::{stack_status_cache, swarm_status_cache};
   use std::collections::HashSet;
 
@@ -392,12 +407,11 @@ async fn list_stack_terminals(
     return list_terminals_on_server(&server, Some(filter)).await;
   }
 
-  // Exact task → that worker only
+  // Exact task → that worker only (Stack Terminal already checked — no Swarm Terminal)
   if let Some(task_id) = task {
-    let (_, periphery, _) = get_swarm_task_periphery_container(
+    let (_, periphery, _) = resolve_swarm_task_periphery_for_stack(
       &stack.config.swarm_id,
       task_id,
-      user,
       false,
     )
     .await?;
@@ -426,6 +440,11 @@ async fn list_stack_terminals(
     }
   }
 
+  // Without known swarm service ids, refuse over-broad fan-out across the whole swarm.
+  if swarm_service_ids.is_empty() {
+    return Ok(vec![]);
+  }
+
   let cache = swarm_status_cache()
     .get_or_insert_default(&stack.config.swarm_id)
     .await;
@@ -442,9 +461,7 @@ async fn list_stack_terminals(
     let Some(sid) = t.service_id.as_deref() else {
       continue;
     };
-    if !swarm_service_ids.is_empty()
-      && !swarm_service_ids.contains(sid)
-    {
+    if !swarm_service_ids.contains(sid) {
       continue;
     }
     let Some(task_id) = t.id.as_deref() else {
@@ -454,13 +471,13 @@ async fn list_stack_terminals(
     if !seen_nodes.insert(node) {
       continue;
     }
-    let Ok((_, periphery, _)) = get_swarm_task_periphery_container(
-      &stack.config.swarm_id,
-      task_id,
-      user,
-      false,
-    )
-    .await
+    let Ok((_, periphery, _)) =
+      resolve_swarm_task_periphery_for_stack(
+        &stack.config.swarm_id,
+        task_id,
+        false,
+      )
+      .await
     else {
       continue;
     };

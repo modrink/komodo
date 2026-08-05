@@ -63,22 +63,24 @@ export default function NewTerminal({
   const { search, setSearch, combobox } = useSearchCombobox();
 
   const needsService = !!services && !service;
-  const needsTask =
-    !!tasks &&
-    tasks.filter((t) => !service || !t.service || t.service === service)
-      .length > 1 &&
-    !task &&
-    (!services || !!service);
-
   const tasksForService = tasks?.filter(
     (t) => !service || !t.service || t.service === service,
   );
+  const noTasksForService =
+    !!tasks && !!service && (tasksForService?.length ?? 0) === 0;
+  const needsTask =
+    !!tasks &&
+    (tasksForService?.length ?? 0) > 1 &&
+    !task &&
+    (!services || !!service);
 
   const create = async (command: string | undefined, isServer: boolean) => {
     if (!existingTerminals) return;
+    if (noTasksForService) return;
     const pickedTask =
       task ??
       (tasksForService?.length === 1 ? tasksForService[0].id : undefined);
+    if (tasks && !pickedTask) return;
     const name = nextTerminalName(
       command,
       service,
@@ -125,9 +127,11 @@ export default function NewTerminal({
 
   const placeholder = needsService
     ? "Select Service"
-    : needsTask
-      ? "Select Task"
-      : "Select Command";
+    : noTasksForService
+      ? "No RUNNING tasks"
+      : needsTask
+        ? "Select Task"
+        : "Select Command";
 
   return (
     <Combobox
@@ -149,6 +153,9 @@ export default function NewTerminal({
         }
         if (needsTask) {
           setTask(command);
+          return;
+        }
+        if (noTasksForService) {
           return;
         }
         create(
@@ -199,7 +206,12 @@ export default function NewTerminal({
                 <Text>{t.label}</Text>
               </Combobox.Option>
             ))}
-          {!needsService && !needsTask && (
+          {noTasksForService && (
+            <Combobox.Option value="__none" disabled>
+              <Text c="dimmed">No RUNNING tasks for this service</Text>
+            </Combobox.Option>
+          )}
+          {!needsService && !needsTask && !noTasksForService && (
             <>
               {isServer && !search && (
                 <Combobox.Option value="Default">Default</Combobox.Option>

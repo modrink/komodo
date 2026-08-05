@@ -199,6 +199,39 @@ impl Resolve<ReadArgs> for ListStackServices {
   }
 }
 
+impl Resolve<ReadArgs> for ListStackTerminalTasks {
+  async fn resolve(
+    self,
+    ReadArgs { user }: &ReadArgs,
+  ) -> mogh_error::Result<ListStackTerminalTasksResponse> {
+    let stack = get_check_permissions::<Stack>(
+      &self.stack,
+      user,
+      PermissionLevel::Read.into(),
+    )
+    .await?;
+
+    let tasks =
+      crate::helpers::terminal::list_running_stack_terminal_tasks(
+        &stack,
+        self.service.as_deref(),
+      )
+      .await?;
+
+    Ok(
+      tasks
+        .into_iter()
+        .map(|t| StackTerminalTask {
+          id: t.id,
+          service: t.service,
+          node_id: t.node_id,
+          updated_at: t.updated_at,
+        })
+        .collect(),
+    )
+  }
+}
+
 impl Resolve<ReadArgs> for ListAllStackServices {
   async fn resolve(
     self,

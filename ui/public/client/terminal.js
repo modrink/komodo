@@ -151,8 +151,8 @@ export const terminal_methods = (url, state) => {
         command,
         init,
     }, callbacks);
-    const execute_stack_service_terminal = async ({ stack, service, terminal, command, init, }, callbacks) => execute_terminal({
-        target: { type: "Stack", params: { stack, service } },
+    const execute_stack_service_terminal = async ({ stack, service, task, terminal, command, init, }, callbacks) => execute_terminal({
+        target: { type: "Stack", params: { stack, service, ...(task ? { task } : {}) } },
         terminal,
         command,
         init,
@@ -225,7 +225,10 @@ const connect_terminal_target_query = (target) => {
                 `target[params][server]=${target.params.server}&target[params][container]=${target.params.container}`);
         case "Stack":
             return (base +
-                `target[params][stack]=${target.params.stack}&target[params][service]=${target.params.service}`);
+                `target[params][stack]=${target.params.stack}&target[params][service]=${target.params.service}` +
+                (target.params.task
+                    ? `&target[params][task]=${target.params.task}`
+                    : ""));
         case "Deployment":
             return base + `target[params][deployment]=${target.params.deployment}`;
         case "SwarmTask":

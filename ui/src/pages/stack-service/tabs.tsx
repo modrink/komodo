@@ -1,6 +1,7 @@
 import LogSection from "@/components/log-section";
 import TerminalSection from "@/components/terminal/section";
-import { usePermissions, useRead } from "@/lib/hooks";
+import { useRunningSwarmTaskOptions } from "@/components/terminal/use-running-swarm-tasks";
+import { usePermissions } from "@/lib/hooks";
 import { useServer } from "@/resources/server";
 import { ICONS } from "@/lib/icons";
 import {
@@ -47,35 +48,11 @@ export default function StackServiceTabs({
   const containerTerminalsDisabled =
     useServer(stack.info.server_id)?.info.container_terminals_disabled ?? false;
 
-  const swarmTasks = useRead(
-    "ListSwarmTasks",
-    { swarm: stack.info.swarm_id },
-    { enabled: isSwarm, refetchInterval: 10_000 },
-  ).data;
-
-  const runningTasks = useMemo(() => {
-    if (!isSwarm || !swarmService?.ID) return [];
-    return (swarmTasks ?? [])
-      .filter(
-        (t) =>
-          t.ServiceID === swarmService.ID &&
-          t.State === Types.TaskState.RUNNING &&
-          !!t.ContainerID &&
-          !!t.ID,
-      )
-      .sort((a, b) =>
-        (b.UpdatedAt ?? "").localeCompare(a.UpdatedAt ?? ""),
-      );
-  }, [isSwarm, swarmService?.ID, swarmTasks]);
-
-  const taskOptions = useMemo(
-    () =>
-      runningTasks.map((t) => ({
-        id: t.ID!,
-        label: `${t.ID!.slice(0, 12)}${t.NodeID ? ` @ ${t.NodeID.slice(0, 8)}` : ""}`,
-      })),
-    [runningTasks],
-  );
+  const taskOptions = useRunningSwarmTaskOptions({
+    stackId: stack.id,
+    service,
+    enabled: isSwarm,
+  });
 
   const logDisabled = !specificLogs || down;
   const inspectDisabled = !specificInspect || down;
@@ -86,7 +63,7 @@ export default function StackServiceTabs({
     container?.state !== Types.ContainerStateStatusEnum.Running;
 
   const swarmTerminalDisabled =
-    !specificTerminal || runningTasks.length === 0;
+    !specificTerminal || taskOptions.length === 0;
 
   const terminalDisabled = isSwarm
     ? swarmTerminalDisabled
@@ -149,9 +126,7 @@ export default function StackServiceTabs({
       params: {
         stack: stack.id,
         service,
-        ...(taskOptions.length === 1
-          ? { task: taskOptions[0].id }
-          : {}),
+        ...(taskOptions.length === 1 ? { task: taskOptions[0].id } : {}),
       },
     }),
     [stack.id, service, taskOptions],

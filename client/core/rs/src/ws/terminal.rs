@@ -68,6 +68,7 @@ impl KomodoClient {
     &self,
     stack: String,
     service: String,
+    task: Option<String>,
     terminal: Option<String>,
     init: Option<InitTerminal>,
   ) -> anyhow::Result<TerminalWebsocket> {
@@ -76,7 +77,7 @@ impl KomodoClient {
         target: TerminalTarget::Stack {
           stack,
           service: Some(service),
-          task: None,
+          task,
         },
         terminal,
         init,

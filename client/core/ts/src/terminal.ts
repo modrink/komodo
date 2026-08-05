@@ -229,12 +229,14 @@ export const terminal_methods = (url: string, state: ClientState) => {
     {
       stack,
       service,
+      task,
       terminal,
       command,
       init,
     }: {
       stack: string;
       service: string;
+      task?: string;
       terminal?: string;
       command: string;
       init?: InitTerminal;
@@ -243,7 +245,10 @@ export const terminal_methods = (url: string, state: ClientState) => {
   ) =>
     execute_terminal(
       {
-        target: { type: "Stack", params: { stack, service } },
+        target: {
+          type: "Stack",
+          params: { stack, service, ...(task ? { task } : {}) },
+        },
         terminal,
         command,
         init,
@@ -442,7 +447,10 @@ const connect_terminal_target_query = (target: TerminalTarget) => {
     case "Stack":
       return (
         base +
-        `target[params][stack]=${target.params.stack}&target[params][service]=${target.params.service}`
+        `target[params][stack]=${target.params.stack}&target[params][service]=${target.params.service}` +
+        (target.params.task
+          ? `&target[params][task]=${target.params.task}`
+          : "")
       );
     case "Deployment":
       return base + `target[params][deployment]=${target.params.deployment}`;

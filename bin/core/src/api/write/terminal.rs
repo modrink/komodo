@@ -26,6 +26,7 @@ use crate::{
       get_deployment_periphery_container,
       get_stack_service_periphery_container,
       get_swarm_task_periphery_container,
+      resolve_swarm_task_periphery_for_stack,
     },
   },
   permission::get_check_permissions,
@@ -254,28 +255,31 @@ impl Resolve<WriteArgs> for DeleteTerminal {
             .context("Must provide 'target.params.task' to delete a Swarm Stack terminal")
             .status_code(StatusCode::BAD_REQUEST)?;
           let (resolved, periphery, _) =
-            get_swarm_task_periphery_container(
+            resolve_swarm_task_periphery_for_stack(
               &stack.config.swarm_id,
               task_id,
-              user,
               false,
             )
             .await?;
-          // Prefer Stack filter (how we store swarm-via-stack terminals);
-          // fall back to resolved SwarmTask if needed.
           let del_target = TerminalTarget::Stack {
             stack: stack.id,
             service: service.clone(),
             task: Some(task_id.clone()),
           };
-          let _ = resolved;
-          periphery
+          // Prefer Stack filter (how we store swarm-via-stack terminals);
+          // also try resolved SwarmTask for legacy / mis-stored targets.
+          let _ = periphery
             .request(api::terminal::DeleteTerminal {
               target: del_target,
               terminal: self.terminal.clone(),
             })
-            .await
-            .context("Failed to delete terminal on Periphery")?;
+            .await;
+          let _ = periphery
+            .request(api::terminal::DeleteTerminal {
+              target: resolved,
+              terminal: self.terminal.clone(),
+            })
+            .await;
           return Ok(NoData {});
         }
         resource::get::<Server>(&stack.config.server_id).await?

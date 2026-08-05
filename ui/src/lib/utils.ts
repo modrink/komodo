@@ -266,8 +266,12 @@ export function terminalLink({
       return `/servers/${target.params.server}/terminal/${name}`;
     case "Container":
       return `/servers/${target.params.server}/container/${target.params.container}/terminal/${name}`;
-    case "Stack":
-      return `/stacks/${target.params.stack}/service/${target.params.service}/terminal/${name}`;
+    case "Stack": {
+      const base = `/stacks/${target.params.stack}/service/${target.params.service}/terminal/${name}`;
+      return target.params.task
+        ? `${base}?task=${encodeURIComponent(target.params.task)}`
+        : base;
+    }
     case "Deployment":
       return `/deployments/${target.params.deployment}/terminal/${name}`;
     case "SwarmTask":
