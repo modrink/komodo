@@ -1,13 +1,8 @@
 # FORK ONLY — do not upstream.
 # Publishes komodo-core + komodo-periphery to ghcr.io/modrink.
 #
-# Perf:
-# - Tag pushes: skip Cargo gate; wall ≈ Docker only.
-# - PRs/dispatch: gate with rust-cache; fmt + test only.
-# - Gate ∥ Docker when both run.
-# - Path filter: skip unchanged component on PRs.
-# - Docker: cargo-chef, yarn layers, pinned chef digest, system strip.
-# - Cache: registry-only write (v3); GHA+registry read. No provenance/SBOM.
+# Tags: skip Cargo gate (main CI covers the commit). Gate ∥ Docker otherwise.
+# Dockerfiles use cargo-chef; registry buildcache tag *-v3.
 
 name: Publish images (fork)
 
@@ -38,10 +33,6 @@ on:
         description: Branch or tag to build
         required: true
         default: main
-      skip_gate:
-        description: Skip Cargo gate
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -54,114 +45,34 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  changes:
-    name: Detect changes
-    if: github.repository == 'modrink/komodo'
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set.outputs.matrix }}
-    steps:
-      # Checkout only needed for path-filter on PRs
-      - uses: actions/checkout@v7
-        if: github.event_name == 'pull_request'
-        with:
-          fetch-depth: 0
-
-      - uses: dorny/paths-filter@v3
-        id: filter
-        if: github.event_name == 'pull_request'
-        with:
-          filters: |
-            core:
-              - 'bin/core/**'
-              - 'bin/cli/**'
-              - 'bin/entrypoint.sh'
-              - 'ui/**'
-              - 'client/core/**'
-              - 'client/periphery/**'
-              - 'lib/**'
-              - 'xtask/**'
-              - 'Cargo.toml'
-              - 'Cargo.lock'
-              - 'config/core.config.toml'
-              - '.dockerignore'
-            periphery:
-              - 'bin/periphery/**'
-              - 'bin/entrypoint.sh'
-              - 'client/core/rs/**'
-              - 'client/periphery/**'
-              - 'lib/**'
-              - 'xtask/**'
-              - 'Cargo.toml'
-              - 'Cargo.lock'
-              - '.dockerignore'
-            workflow:
-              - '.github/workflows/publish-images.yml'
-              - 'bin/core/aio.Dockerfile'
-              - 'bin/periphery/aio.Dockerfile'
-              - '.dockerignore'
-
-      - name: Build matrix JSON
-        id: set
-        run: |
-          core=true
-          periphery=true
-          if [ "${{ github.event_name }}" = "pull_request" ] && \
-             [ "${{ steps.filter.outputs.workflow }}" != "true" ]; then
-            core="${{ steps.filter.outputs.core }}"
-            periphery="${{ steps.filter.outputs.periphery }}"
-          fi
-          if [ "$core" != "true" ] && [ "$periphery" != "true" ]; then
-            core=true
-            periphery=true
-          fi
-          parts=()
-          if [ "$core" = "true" ]; then
-            parts+=('{"component":"core","dockerfile":"bin/core/aio.Dockerfile","image":"ghcr.io/modrink/komodo-core"}')
-          fi
-          if [ "$periphery" = "true" ]; then
-            parts+=('{"component":"periphery","dockerfile":"bin/periphery/aio.Dockerfile","image":"ghcr.io/modrink/komodo-periphery"}')
-          fi
-          json=$(printf '%s\n' "${parts[@]}" | paste -sd, -)
-          echo "matrix={\"include\":[${json}]}" >> "$GITHUB_OUTPUT"
-
   ci-gate:
     name: Cargo gate
-    if: |
-      github.repository == 'modrink/komodo' &&
-      github.event_name != 'push' &&
-      (github.event_name != 'workflow_dispatch' || inputs.skip_gate != true)
+    # Tag pushes already passed main CI on the same commit.
+    if: github.repository == 'modrink/komodo' && github.event_name != 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
           ref: ${{ env.CHECKOUT_REF }}
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           components: rustfmt
 
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
           shared-key: publish-cargo-gate
           cache-on-failure: true
 
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-      - name: Test
-        run: cargo test
+      - run: cargo fmt --all -- --check
+      - run: cargo test
 
   build-and-push:
     name: build (${{ matrix.component }})
-    if: github.repository == 'modrink/komodo' && needs.changes.result == 'success'
-    needs: changes
+    if: github.repository == 'modrink/komodo'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     concurrency:
@@ -172,19 +83,23 @@ jobs:
       packages: write
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
+      matrix:
+        include:
+          - component: core
+            dockerfile: bin/core/aio.Dockerfile
+            image: ghcr.io/modrink/komodo-core
+          - component: periphery
+            dockerfile: bin/periphery/aio.Dockerfile
+            image: ghcr.io/modrink/komodo-periphery
     steps:
-      - name: Checkout
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
           ref: ${{ env.CHECKOUT_REF }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@v4
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v4
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -197,8 +112,7 @@ jobs:
           slug="$(echo "$slug" | tr '/_' '-' | tr -cd '[:alnum:].-' | cut -c1-128)"
           echo "REF_SLUG=$slug" >> "$GITHUB_ENV"
 
-      - name: Docker meta
-        id: meta
+      - id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ matrix.image }}
@@ -215,8 +129,7 @@ jobs:
             org.opencontainers.image.version=${{ env.SEMVER_SOURCE }}
             org.opencontainers.image.title=komodo-${{ matrix.component }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v7
+      - uses: docker/build-push-action@v7
         with:
           context: .
           file: ${{ matrix.dockerfile }}
@@ -226,25 +139,18 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           provenance: false
           sbom: false
-          # Read: GHA (fast) + registry (durable). Write: registry only (avoid dual fat export).
-          cache-from: |
-            type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.component }}-v3
-            type=gha,scope=komodo-${{ matrix.component }}-v2
-            type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.component }}-v2
-          cache-to: |
-            type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.component }}-v3,mode=max,ignore-error=true
+          cache-from: type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.component }}-v3
+          cache-to: type=registry,ref=${{ env.CACHE_IMAGE }}:${{ matrix.component }}-v3,mode=max,ignore-error=true
 
   publish-ok:
     name: Publish OK
     if: github.repository == 'modrink/komodo' && always()
-    needs: [changes, ci-gate, build-and-push]
+    needs: [ci-gate, build-and-push]
     runs-on: ubuntu-latest
     steps:
-      - name: Require jobs green (gate may skip)
+      - name: Require jobs green (gate may skip on tags)
         run: |
-          echo "changes=${{ needs.changes.result }}"
           echo "ci-gate=${{ needs.ci-gate.result }}"
           echo "build-and-push=${{ needs.build-and-push.result }}"
-          test "${{ needs.changes.result }}" = "success"
           case "${{ needs.ci-gate.result }}" in success|skipped) ;; *) exit 1 ;; esac
           test "${{ needs.build-and-push.result }}" = "success"

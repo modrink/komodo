@@ -1,6 +1,5 @@
-## All in one, multi stage compile + runtime Docker build for your architecture.
-## cargo-chef: deps layer cached when Cargo.lock unchanged.
-## chef image pinned by digest (avoid floating-tag cook busts).
+## All in one, multi stage compile + runtime Docker build.
+## cargo-chef (deps). Chef image pinned by digest.
 
 FROM docker.io/lukemathwalker/cargo-chef@sha256:7341ca3ca2726f3249fb227b510ce195fb80d6e584ff8894b68ffa97f1512e62 AS chef
 WORKDIR /builder

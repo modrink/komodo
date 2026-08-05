@@ -22,9 +22,7 @@ jobs:
         with:
           toolchain: stable
 
-      # Restoring target/ is the real warm win (see audit vs sccache).
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
           shared-key: ci-build
           cache-on-failure: true
