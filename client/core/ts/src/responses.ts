@@ -76,6 +76,7 @@ export type ReadResponses = {
   ListStacks: Types.ListStacksResponse;
   ListFullStacks: Types.ListFullStacksResponse;
   ListStackServices: Types.ListStackServicesResponse;
+  ListStackTerminalTasks: Types.ListStackTerminalTasksResponse;
   ListAllStackServices: Types.ListAllStackServicesResponse;
   ListCommonStackExtraArgs: Types.ListCommonStackExtraArgsResponse;
   ListCommonStackBuildExtraArgs: Types.ListCommonStackBuildExtraArgsResponse;
