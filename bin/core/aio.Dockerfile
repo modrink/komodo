@@ -1,9 +1,7 @@
-## All in one, multi stage compile + runtime Docker build for your architecture.
-## cargo-chef: deps layer cached when Cargo.lock unchanged.
-## chef image pinned by digest (avoid floating-tag cook busts).
+## All in one, multi stage compile + runtime Docker build.
+## cargo-chef (deps) + yarn lockfile layers. Chef image pinned by digest.
 
 FROM docker.io/lukemathwalker/cargo-chef@sha256:7341ca3ca2726f3249fb227b510ce195fb80d6e584ff8894b68ffa97f1512e62 AS chef
-# system strip (binutils) — skip cargo-strip install (~20s cold)
 WORKDIR /builder
 
 FROM chef AS planner
@@ -18,7 +16,6 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS core-builder
 COPY --from=planner /builder/recipe.json recipe.json
-# Cache dependency builds (invalidates only on lock/manifest recipe change)
 RUN cargo chef cook --release --recipe-path recipe.json \
   --package komodo_core --package komodo_cli
 COPY Cargo.toml Cargo.lock ./
@@ -32,7 +29,6 @@ RUN cargo build -p komodo_core --release && \
   cargo build -p komodo_cli --release && \
   strip target/release/core target/release/km
 
-# Build UI — yarn deps layer cached when lockfiles unchanged
 FROM docker.io/library/node:22.12-alpine AS ui-builder
 WORKDIR /builder
 COPY ./client/core/ts/package.json ./client/core/ts/yarn.lock ./client/
